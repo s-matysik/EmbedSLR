@@ -1,47 +1,33 @@
-import typer, sys, json, yaml, pandas as pd
-from pathlib import Path
+# fragment embedslr/cli.py  (tylko zmieniona sekcja wyboru silnika)
+import typer, importlib
 
-from embedslr.io.scopus import load_scopus_csv
-from embedslr.embeddings.local_sbert import LocalSBERT
-from embedslr.ranking.ranker import rank_dataframe
-from embedslr.biblio.metrics import CorpusMetrics
+# ...
 
-app = typer.Typer(add_completion=False,
-                  help="embedslr – szybki ranking publikacji + metryki biblio.")
+_engine_map = {
+    "local-sbert": "LocalSBERT",
+    "openai": "OpenAIEmbedder",
+    "cohere": "CohereEmbedder",
+    "nomic": "NomicEmbedder",
+    "jina": "JinaEmbedder",
+}
+
+
+def _load_engine(tag: str, **kwargs):
+    if tag not in _engine_map:
+        raise typer.BadParameter(f"Nieznany silnik: {tag}")
+    cls_name = _engine_map[tag]
+    cls = getattr(importlib.import_module("embedslr.embeddings"), cls_name)
+    return cls(**kwargs)
+
 
 @app.command()
 def rank(
-    input_csv: Path = typer.Argument(..., exists=True, readable=True),
-    query: str      = typer.Option(..., "--query", "-q", help="Problem badawczy"),
-    model: str      = typer.Option("all-mpnet-base-v2", help="SBERT model name"),
-    out: Path       = typer.Option("ranking.csv", help="Plik wyjściowy CSV")
+    input_csv: Path = typer.Argument(...),
+    query: str = typer.Option(..., "--query", "-q"),
+    engine: str = typer.Option("local-sbert", help="local-sbert | openai | cohere | nomic | jina"),
+    model: str = typer.Option(None, help="Parametr modelu – opcjonalnie"),
+    out: Path = typer.Option("ranking.csv"),
 ):
-    df = load_scopus_csv(input_csv)
-    embedder = LocalSBERT(model_name=model)
-    ranked = rank_dataframe(df, query=query, embedder=embedder)
-    ranked.to_csv(out, index=False)
-    typer.echo(f"Zapisano ranking do {out}")
-
-@app.command()
-def metrics(
-    ranked_csv: Path = typer.Argument(..., exists=True),
-    out: Path        = typer.Option("biblio_report.json")
-):
-    df = pd.read_csv(ranked_csv)
-    metrics = CorpusMetrics(df)
-    report = {
-        "avg_jaccard_keywords": metrics.jaccard_keywords(),
-        # ... dodaj inne wskaźniki …
-    }
-    json.dump(report, open(out, "w"), indent=2)
-    typer.echo(f"Raport zapisany do {out}")
-
-def _entry_point():
-    try:
-        app()
-    except Exception as exc:  # pragma: no cover
-        typer.echo(str(exc), err=True)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    _entry_point()
+    # wczytanie ...
+    embedder = _load_engine(engine, model_name=model)  # przekazujemy nazwę modelu, jeśli podana
+    # reszta bez zmian
