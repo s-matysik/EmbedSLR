@@ -1,0 +1,24 @@
+[project]
+name            = "embedslr"
+version         = "0.1.0"
+description     = "Embedding‑based screening & bibliometrics for SLR"
+authors         = [{ name = "Twoje Nazwisko", email = "you@uni.edu" }]
+license         = { text = "MIT" }
+requires-python = ">=3.9"
+
+dependencies = [
+    "pandas>=2.1",
+    "numpy>=1.25",
+    "scikit-learn>=1.3",
+    "sentence-transformers>=2.5",
+    "typer[all]>=0.9",
+    "requests>=2.31",
+    # api‑clients
+    "openai>=1.0",
+    "cohere>=5.0",
+    "nomic>=3.0",
+    "jina-hubble-sdk>=0.23"
+]
+
+[project.scripts]
+embedslr = "embedslr.cli:_entry_point"
