@@ -34,16 +34,16 @@ build-backend = "setuptools.build_meta"
 # ─────────────────────────────────────────────────────────────────────────────
 # ustawienia setuptools – ręczne wskazanie pakietów w układzie „flat”
 [tool.setuptools]
-packages = { find = {} }
 
 [tool.setuptools.packages.find]
 include = [
-    "embedslr",   # główny pakiet (zawiera __init__.py i cli.py)
-    "io",         # uwaga: nazwa koliduje z stdlib io – patrz wskazówki niżej
+    "embedslr",
+    "io",
     "embeddings",
     "ranking",
     "biblio",
     "utils"
 ]
+
 # opcjonalnie możesz wykluczyć katalogi testów/notebooków:
 # exclude = ["tests*", "examples*", "docs*"]
