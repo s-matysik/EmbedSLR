@@ -1,8 +1,9 @@
+# pyproject.toml  (złamanie długiej linii + sekcja build-system)
 [project]
 name            = "embedslr"
 version         = "0.1.0"
 description     = "Embedding‑based screening & bibliometrics for SLR"
-authors         = [{ name = "Twoje Nazwisko", email = "you@uni.edu" }]
+authors         = [{ name = "Twoje Nazwisko", email = "you@uni.edu" }]
 license         = { text = "MIT" }
 requires-python = ">=3.9"
 
@@ -13,7 +14,6 @@ dependencies = [
     "sentence-transformers>=2.5",
     "typer[all]>=0.9",
     "requests>=2.31",
-    # api‑clients
     "openai>=1.0",
     "cohere>=5.0",
     "nomic>=3.0",
@@ -22,3 +22,9 @@ dependencies = [
 
 [project.scripts]
 embedslr = "embedslr.cli:_entry_point"
+
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
