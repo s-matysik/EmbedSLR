@@ -1,12 +1,16 @@
-# pyproject.toml ─ konfiguracja pakietu „flat‑layout”
+# pyproject.toml ─ EmbedSLR
+# ============================================
+#  • układ „one real package + 5 sub‑packages”
+#  • gotowe do publikacji w PyPI / SoftwareX
+# ============================================
 
 [project]
 name            = "embedslr"
 version         = "0.1.0"
-description     = "Embedding‑based screening & bibliometrics for SLR"
-readme          = "README.md"                  # (opcjonalnie, ale zalecane)
+description     = "Embedding‑based screening & bibliometrics for systematic literature reviews"
+readme          = "README.md"
 authors         = [{ name = "Twoje Nazwisko", email = "you@uni.edu" }]
-license         = { text = "MIT" }
+license         = "MIT"
 requires-python = ">=3.9"
 
 dependencies = [
@@ -14,7 +18,7 @@ dependencies = [
     "numpy>=1.25",
     "scikit-learn>=1.3",
     "sentence-transformers>=2.5",
-    "typer[all]>=0.9",
+    "typer>=0.9",
     "requests>=2.31",
     "openai>=1.0",
     "cohere>=5.0",
@@ -25,25 +29,22 @@ dependencies = [
 [project.scripts]
 embedslr = "embedslr.cli:_entry_point"
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 # backend budowania
 [build-system]
 requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ustawienia setuptools – ręczne wskazanie pakietów w układzie „flat”
-[tool.setuptools]
-
+# ---------------------------------------------------------------------------
+# ustawienia setuptools – jawnie wskazujemy, które pakiety wchodzą do wheel‑a
 [tool.setuptools.packages.find]
 include = [
-    "embedslr",
-    "io",
+    "embedslr*",   # główny pakiet + ewentualne podpakiety
     "embeddings",
     "ranking",
     "biblio",
-    "utils"
+    "utils",
+    "io"           # pozostaw tylko jeśli NIE zmieniasz nazwy folderu
 ]
-
-# opcjonalnie możesz wykluczyć katalogi testów/notebooków:
+# Jeśli dodasz katalog testów / notebooków, możesz go wykluczyć:
 # exclude = ["tests*", "examples*", "docs*"]
