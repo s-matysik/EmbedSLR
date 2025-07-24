@@ -1,16 +1,5 @@
-# embedslr/utils/batching.py
-from typing import Iterable, Generator, TypeVar
-
-T = TypeVar("T")
-
-
-def chunk_list(data: Iterable[T], chunk_size: int = 100) -> Generator[list[T], None, None]:
-    """Dzieli iterowalny obiekt `data` na podlisty po `chunk_size` elementów."""
-    chunk: list[T] = []
-    for item in data:
-        chunk.append(item)
-        if len(chunk) == chunk_size:
-            yield chunk
-            chunk = []
-    if chunk:
-        yield chunk
+"""
+Thin shim: re‑eksport funkcji z top‑level utils.batching.
+Pozwala, by istniał fizyczny plik (nie tylko alias w sys.modules).
+"""
+from utils.batching import *            # noqa: F403,F401
