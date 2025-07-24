@@ -1,11 +1,22 @@
 """
-embedslr
-~~~~~~~~
-Biblioteka do wspomagania systematycznych przeglądów literatury
-z wykorzystaniem embeddingów i podstawowych metryk bibliometrycznych.
+EmbedSLR
+========
+Główny pakiet wysokopoziomowych interfejsów do:
+ • pobierania i łącznia danych bibliograficznych,
+ • generowania embeddingów (wrappers: SBERT, OpenAI, Cohere, Nomic, Jina),
+ • rankingowania publikacji względem zapytania badawczego,
+ • obliczeń bibliometrycznych.
 
-Dokumentacja: https://github.com/<ORG>/embedslr
-Licencja: MIT
+API na razie w fazie *beta* – może się zmieniać bez zapowiedzi.
 """
-from importlib import metadata as _md
-__version__: str = _md.version(__name__) if _md else "0.0.0"  # pragma: no cover
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("embedslr")
+except PackageNotFoundError:   # pakiet instalowany w editable ‑e
+    __version__ = "0.0.0+editable"
+
+# ─── public shortcuts ────────────────────────────────────────────────────────
+from embeddings.base import EmbeddingBackend          # noqa: E402 F401
+from ranking.ranker import Ranker                     # noqa: E402 F401
+from biblio.metrics import BibliometricAnalyzer       # noqa: E402 F401
