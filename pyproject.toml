@@ -1,9 +1,10 @@
+# pyproject.toml  ─ wersja po dodaniu alias‑pakietu utils
 [project]
 name            = "embedslr"
 version         = "0.1.0"
 description     = "Embedding‑based screening & bibliometrics for systematic literature reviews"
 readme          = "README.md"
-authors         = [{ name = "Twoje Nazwisko", email = "you@uni.edu" }]
+authors         = [{ name = "Twoje Nazwisko", email = "you@uni.edu" }]
 license         = "MIT"
 requires-python = ">=3.9"
 
@@ -12,7 +13,7 @@ dependencies = [
     "numpy>=1.25",
     "scikit-learn>=1.3",
     "sentence-transformers>=2.5",
-    "typer>=0.9",                 # bez [all] – już nie istnieje
+    "typer>=0.9",
     "requests>=2.31",
     "openai>=1.0",
     "cohere>=5.0",
@@ -29,11 +30,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = [
-    "embedslr*",   # główny pakiet + podpakiety
+    "embedslr*",
+    "embedslr.utils*",   # ← alias‑pakiet
     "embeddings",
     "ranking",
     "biblio",
     "utils",
-    "io"           # jeśli zmienisz nazwę, podmień tutaj
+    "io"
 ]
-# exclude = ["tests*", "examples*", "docs*"]
