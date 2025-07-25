@@ -1,42 +1,47 @@
 """
-EmbedSLR – Single‑Line‑Reference Embeddings
-https://github.com/rafalposwiata/EmbedSLR
+EmbedSLR – Embedding‑based Screening for Systematic Literature Reviews
+https://github.com/s-matysik/EmbedSLR
 """
+from __future__ import annotations
 
-from importlib import metadata
 import importlib
 import sys as _sys
+from importlib import metadata
 
-# ──────────────────────────────────────────────────────────
-# 1)  Ładujemy *właściwy* podpakiet ``embeddings``.
-#     Po reorganizacji repozytorium może on leżeć w dwóch miejscach:
-#       • embedslr/embeddings      (nowy układ, zalecany)
-#       • top‑level  embeddings/   (stary układ)
-try:
-    from . import embeddings as _emb_subpkg               # noqa: F401
-except ModuleNotFoundError:
-    _emb_subpkg = importlib.import_module("embeddings")
+# ────────────────────────────────────────────────────────
+# 1)  Załaduj podpakiet „embeddings” *po* zakończeniu init.
+def _import_subpkg(name: str):
+    """
+    Importuje podpakiet najpierw jako „embedslr.<name>”, a gdy to się nie uda,
+    próbuje wariantu legacy – top‑level „<name>”.
+    Zwraca zaimportowany moduł.
+    """
+    try:
+        return importlib.import_module(f"{__name__}.{name}")
+    except ModuleNotFoundError:
+        return importlib.import_module(name)
 
-# Zarejestruj aliasy, żeby każdy wariant importu działał:
-#   import embedslr.embeddings         ✔
-#   import embeddings.base             ✔
+
+# embeddings (główna funkcjonalność pakietu)
+_emb_subpkg = _import_subpkg("embeddings")
+
+# rejestrujemy aliasy w sys.modules
 _sys.modules.setdefault(f"{__name__}.embeddings", _emb_subpkg)
 _sys.modules.setdefault("embeddings", _emb_subpkg)
 
-# ──────────────────────────────────────────────────────────
-# 2)  Analogiczne aliasy dla pozostałych pakietów toplevel:
+# ────────────────────────────────────────────────────────
+# 2)  Aliasujemy pozostałe stare pakiety top‑level, jeśli istnieją
 for _alias in ("utils", "ranking", "biblio", "io"):
     try:
         _pkg = importlib.import_module(_alias)
-        _sys.modules.setdefault(f"{__name__}.{_alias}", _pkg)
     except ModuleNotFoundError:
-        # brak danego podpakietu – ignorujemy
-        pass
+        continue
+    _sys.modules.setdefault(f"{__name__}.{_alias}", _pkg)
 
-# ──────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────
 # 3)  Metadane
 try:
-    __version__ = metadata.version(__name__)
+    __version__ = metadata.version("embedslr")
 except metadata.PackageNotFoundError:
     __version__ = "0.0.0.dev0"
 
