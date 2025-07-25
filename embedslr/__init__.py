@@ -1,48 +1,27 @@
 """
-EmbedSLR – Embedding‑based Screening for Systematic Literature Reviews
-https://github.com/s-matysik/EmbedSLR
+EmbedSLR – biblioteka do systematycznych przeglądów literatury oparta na
+embeddingach.
+
+Kluczowe klasy eksportowane publicznie:
+    • EmbeddingBackend      – abstrakcyjny interfejs backendów
+    • Ranker                – ranking rekordów na podstawie embedów
+    • BibliometricAnalyzer  – proste metryki bibliometryczne
 """
-from __future__ import annotations
 
-import importlib
-import sys as _sys
-from importlib import metadata
+from importlib.metadata import PackageNotFoundError, version
 
-# ────────────────────────────────────────────────────────
-# 1)  Załaduj podpakiet „embeddings” *po* zakończeniu init.
-def _import_subpkg(name: str):
-    """
-    Importuje podpakiet najpierw jako „embedslr.<name>”, a gdy to się nie uda,
-    próbuje wariantu legacy – top‑level „<name>”.
-    Zwraca zaimportowany moduł.
-    """
-    try:
-        return importlib.import_module(f"{__name__}.{name}")
-    except ModuleNotFoundError:
-        return importlib.import_module(name)
+try:                     # ← wersja zainstalowana z PyPI / editable
+    __version__: str = version(__name__)
+except PackageNotFoundError:      # ← brak metadanych (np. zip)
+    __version__ = "0.0.dev0"
 
+# ── PUBLICZNE SKRÓTY (wyłącznie importy względne!) ─────────────────
+from .embeddings.base import EmbeddingBackend        # noqa: F401,E402
+from .ranking.ranker import Ranker                   # noqa: F401,E402
+from .biblio.metrics import BibliometricAnalyzer     # noqa: F401,E402
 
-# embeddings (główna funkcjonalność pakietu)
-_emb_subpkg = _import_subpkg("embeddings")
-
-# rejestrujemy aliasy w sys.modules
-_sys.modules.setdefault(f"{__name__}.embeddings", _emb_subpkg)
-_sys.modules.setdefault("embeddings", _emb_subpkg)
-
-# ────────────────────────────────────────────────────────
-# 2)  Aliasujemy pozostałe stare pakiety top‑level, jeśli istnieją
-for _alias in ("utils", "ranking", "biblio", "io"):
-    try:
-        _pkg = importlib.import_module(_alias)
-    except ModuleNotFoundError:
-        continue
-    _sys.modules.setdefault(f"{__name__}.{_alias}", _pkg)
-
-# ────────────────────────────────────────────────────────
-# 3)  Metadane
-try:
-    __version__ = metadata.version("embedslr")
-except metadata.PackageNotFoundError:
-    __version__ = "0.0.0.dev0"
-
-__all__ = ["embeddings", "__version__"]
+__all__ = [
+    "EmbeddingBackend",
+    "Ranker",
+    "BibliometricAnalyzer",
+]
