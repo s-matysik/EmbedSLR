@@ -1,42 +1,37 @@
 """
 EmbedSLR
 ========
-Biblioteka do tworzenia i oceny rankingów na podstawie embeddingów artykułów
-naukowych (S/L/R = Search/Link/Recommend).
+Biblioteka do tworzenia i oceny rankingów artykułów naukowych
+z wykorzystaniem embeddingów (S/L/R = Search / Link / Recommend).
 
-Wersja minimalna – zawiera jedynie skróty importowe, żeby użytkownik mógł
-zrobić ::
+Użytkownik może napisać::
 
     import embedslr
     ranker = embedslr.Ranker(...)
 """
-from importlib.metadata import version, PackageNotFoundError
 
-try:
-    __version__ = version("embedslr")
-except PackageNotFoundError:  # instalacja editable → brak metadanych
-    __version__ = "0.0.0.dev0"
-
-# ── PUBLICZNE SKRÓTY (wyłącznie importy względne!) ──────────────────────
-from .embeddings.base import EmbeddingBackend        # noqa: F401,E402
-from .ranking.ranker import Ranker                   # noqa: F401,E402
-from .biblio.metrics import BibliometricAnalyzer     # noqa: F401,E402
-
-__all__ = [
-    "EmbeddingBackend",
-    "Ranker",
-    "BibliometricAnalyzer",
-]
 from importlib import metadata as _metadata
 
-from .embeddings.openai_api import OpenAIEmbedder
-from .ranking.ranker import Ranker
-from .biblio.metrics import BibliometricAnalyzer
+# ────────────────────────────────────────────────────────────────────────
+#  Wersja pakietu
+# ────────────────────────────────────────────────────────────────────────
+try:
+    __version__ = _metadata.version(__name__)          # wersja z metadanych pakietu
+except _metadata.PackageNotFoundError:                 # tryb editable / brak instalacji
+    __version__ = "0.0.0.dev0"
 
-__all__ = [
+# ────────────────────────────────────────────────────────────────────────
+#  Importy wysokiego poziomu (API publiczne)
+# ────────────────────────────────────────────────────────────────────────
+from .embeddings.base import EmbeddingBackend          # noqa: E402,F401
+from .embeddings.openai_api import OpenAIEmbedder      # noqa: E402,F401
+from .ranking.ranker import Ranker                     # noqa: E402,F401
+from .biblio.metrics import BibliometricAnalyzer       # noqa: E402,F401
+
+__all__: list[str] = [
+    "EmbeddingBackend",
     "OpenAIEmbedder",
     "Ranker",
     "BibliometricAnalyzer",
+    "__version__",
 ]
-
-__version__ = _metadata.version(__name__)
