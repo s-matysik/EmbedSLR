@@ -1,11 +1,11 @@
-
 """
-Pod‑pakiet z konkretnymi backendami embeddingów.
+Podpakiet z backendami embeddingów.
 
-Obecnie dostępne:
-    • OpenAIEmbedder  – API OpenAI / Azure OpenAI
+Użytkownik może::
+
+    from embedslr.embeddings.openai_api import OpenAIEmbedder
 """
+from .base import EmbeddingBackend        # noqa: F401
+from .openai_api import OpenAIEmbedder    # noqa: F401
 
-from .openai_api import OpenAIEmbedder  # noqa: F401
-
-__all__ = ["OpenAIEmbedder"]
+__all__ = ["EmbeddingBackend", "OpenAIEmbedder"]
