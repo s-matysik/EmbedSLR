@@ -4,11 +4,29 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "embedslr"
-version = "0.0.0.dev0"
-description = "Embedding‑based Search/Link/Recommend toolkit"
-authors = [{ name = "Twoje Imię", email = "you@example.com" }]
+version = "0.1.0"
+authors = [{name = "Twoje Imię", email = "you@example.com"}]
+description = "Embeddings‑based ranking and bibliometric analysis toolkit"
+readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.9"
+dependencies = [
+  "pandas>=2",
+  "numpy>=1.26",
+  "scikit-learn>=1.4",
+  "sentence-transformers>=2.7",
+  "openai>=1.23",
+  "cohere>=5",
+  "requests",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "coverage", "sphinx", "pre-commit"]
+
+[project.urls]
+Homepage = "https://github.com/YourOrg/EmbedSLR"
+Documentation = "https://yourorg.github.io/EmbedSLR"
+Issues = "https://github.com/YourOrg/EmbedSLR/issues"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["embedslr", "embedslr.*"]   # ← kluczowe!
+where = ["src"]
