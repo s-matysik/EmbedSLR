@@ -27,3 +27,16 @@ __all__ = [
     "Ranker",
     "BibliometricAnalyzer",
 ]
+from importlib import metadata as _metadata
+
+from .embeddings.openai_api import OpenAIEmbedder
+from .ranking.ranker import Ranker
+from .biblio.metrics import BibliometricAnalyzer
+
+__all__ = [
+    "OpenAIEmbedder",
+    "Ranker",
+    "BibliometricAnalyzer",
+]
+
+__version__ = _metadata.version(__name__)
