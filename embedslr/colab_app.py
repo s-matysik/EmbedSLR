@@ -1,66 +1,67 @@
 # embedslr/colab_app.py
 """
-Interactive wizard for Google Colab / Jupyter Lab
-=================================================
-
-1.  Upload a Scopus / Web‑of‑Science CSV.
-2.  Enter the research question (query).
-3.  Choose the embedding provider + model.
-4.  (Optional) paste an API key if the provider requires it.
-5.  Click **Start** – the pipeline runs and returns a ZIP containing:
-
-    • ranking.csv – publications sorted by cosine distance  
-    • biblio_report.txt – quick bibliometric diagnostics
+EmbedSLR – Google Colab wizard
+-------------------------------
+Upload  ➜  Query  ➜  Provider+Model  ➜  (API key)  ➜  Start  ➜  ZIP result.
 """
 
 from __future__ import annotations
 
 import io
 import os
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
 
-import ipywidgets as w
 import pandas as pd
-from IPython.display import FileLink, clear_output, display
+import ipywidgets as w
+from IPython.display import display, clear_output, FileLink
 
-from .bibliometrics import full_report
+# --- try to enable third‑party widgets in new Colab UI -----------------------
+try:
+    from google.colab import output  # type: ignore
+
+    output.enable_custom_widget_manager()
+except Exception:  # noqa: BLE001
+    # Notebook may not be running inside Colab or widgets already enabled
+    pass
+
+
 from .embeddings import get_embeddings, list_models
-from .io import autodetect_columns, combine_title_abstract, read_csv
+from .io import autodetect_columns, combine_title_abstract
 from .similarity import rank_by_cosine
+from .bibliometrics import full_report
 
 
-# -----------------------------------------------------------------------------#
-# Helper widgets
-# -----------------------------------------------------------------------------#
-
-
+# --------------------------------------------------------------------------- #
+# Helper UI fragments
+# --------------------------------------------------------------------------- #
 def _upload_widget() -> w.FileUpload:
-    """Return a FileUpload widget with a live status label."""
-    status = w.Label(value="⏳ No file selected")
+    status = w.HTML("<i>Awaiting file…</i>")
     upload = w.FileUpload(accept=".csv", multiple=False)
 
-    def _parse(change):
+    def _on_upload(change):
         if upload.value:
             raw = next(iter(upload.value.values()))
-            name = raw["metadata"]["name"]
             df = pd.read_csv(io.BytesIO(raw["content"]), low_memory=False)
             upload.df = df  # type: ignore[attr-defined]
-            status.value = f"✅ Loaded *{name}* with {len(df)} records"
+            status.value = (
+                f"✅ Loaded <b>{raw['metadata']['name']}</b> "
+                f"(<code>{len(df)}</code> rows)"
+            )
 
-    upload.observe(_parse, names="value")
-    box = w.VBox([w.HTML("<b>1. Upload CSV</b>"), upload, status])
+    upload.observe(_on_upload, names="value")
+    box = w.VBox([w.HTML("<b>1 · Upload CSV (Scopus / WoS)</b>"), upload, status])
     display(box)
     return upload
 
 
-def _provider_widget() -> tuple[w.Dropdown, w.Dropdown]:
-    """Return two linked dropdowns: provider ↔ model."""
+def _provider_widgets() -> tuple[w.Dropdown, w.Dropdown]:
     prov = w.Dropdown(options=list(list_models()), description="Provider")
     model = w.Dropdown(description="Model")
 
-    def _refresh(_):
+    def _refresh(_):  # noqa: ANN001
         model.options = list_models()[prov.value]
         model.value = model.options[0]
 
@@ -69,113 +70,101 @@ def _provider_widget() -> tuple[w.Dropdown, w.Dropdown]:
     return prov, model
 
 
-def _set_api_key(provider: str, key: str) -> None:
-    """Register *key* in os.environ for the given provider name."""
-    env_map = {
+def _set_api_key(provider: str, key: str):
+    mapping = {
         "openai": "OPENAI_API_KEY",
         "cohere": "COHERE_API_KEY",
         "nomic": "NOMIC_API_KEY",
         "jina": "JINA_API_KEY",
     }
-    var = env_map.get(provider)
+    var = mapping.get(provider)
     if var:
         os.environ[var] = key
 
 
-# -----------------------------------------------------------------------------#
-# Public entry point
-# -----------------------------------------------------------------------------#
-
-
-def run(save_dir: str | os.PathLike | None = None) -> None:
+# --------------------------------------------------------------------------- #
+# Public entry
+# --------------------------------------------------------------------------- #
+def run(save_dir: str | os.PathLike | None = None):
     """
-    Launch the interactive EmbedSLR wizard.
-
-    Parameters
-    ----------
-    save_dir : str | Path, optional
-        If provided, results are written there; otherwise a temporary directory
-        is created.
+    Launch the interactive wizard. Works in Google Colab and plain Jupyter.
     """
+    if "google.colab" in sys.modules:
+        print(
+            "🔧  If you see a grey banner “third‑party Jupyter widgets” "
+            "on the left, click ‘Enable’. Otherwise widgets will not render."
+        )
+
     save_dir = Path(save_dir or tempfile.mkdtemp(prefix="embedslr_"))
 
-    # --- widgets ----------------------------------------------------------------
     upload = _upload_widget()
-    query_box = w.Textarea(
-        description="2. Query",
-        placeholder="Describe your research problem…",
+    query = w.Textarea(
+        description="2 · Query",
+        placeholder="Type your research problem …",
         layout=w.Layout(width="95%", height="80px"),
     )
-    prov_dd, model_dd = _provider_widget()
-    api_key = w.Password(description="API key")
-    start_btn = w.Button(description="🟢 Start", button_style="success")
-    output = w.Output()
+    prov_dd, model_dd = _provider_widgets()
+    api_key = w.Password(description="API key")
+    start = w.Button(description="🟢 Start", button_style="success")
+    out = w.Output()
 
-    # --- callback ----------------------------------------------------------------
-    def _on_start(_btn):
-        output.clear_output()
-        # --- validation ----------------------------------------------------------
+    # ------------------------------------------------ callback -------------
+    def _start(_btn):
+        out.clear_output()
         if not hasattr(upload, "df"):
-            with output:
-                print("❌ First upload a CSV file (step 1).")
+            with out:
+                print("❌ Upload a CSV first (step 1).")
             return
-        if not query_box.value.strip():
-            with output:
-                print("❌ Enter a research query (step 2).")
+        if not query.value.strip():
+            with out:
+                print("❌ Fill in the research query (step 2).")
             return
 
         df = upload.df  # type: ignore[attr-defined]
-
-        with output:
-            clear_output()
-            print("▶︎ Processing …")
-
-        # set env var if user pasted a key
         if api_key.value:
             _set_api_key(prov_dd.value, api_key.value)
 
-        # --- preprocessing -------------------------------------------------------
-        title_col, abs_col = autodetect_columns(df)
-        df["combined_text"] = combine_title_abstract(df, title_col, abs_col)
+        with out:
+            clear_output()
+            print("▶︎ Running EmbedSLR … please wait")
 
-        # --- embeddings ----------------------------------------------------------
-        texts = df["combined_text"].tolist()
-        embs = get_embeddings(texts, provider=prov_dd.value, model=model_dd.value)
+        title, abstr = autodetect_columns(df)
+        df["combined_text"] = combine_title_abstract(df, title, abstr)
+
+        embs = get_embeddings(
+            df["combined_text"].tolist(), provider=prov_dd.value, model=model_dd.value
+        )
         qvec = get_embeddings(
-            [query_box.value], provider=prov_dd.value, model=model_dd.value
+            [query.value], provider=prov_dd.value, model=model_dd.value
         )[0]
 
-        # --- ranking & report ----------------------------------------------------
         ranked = rank_by_cosine(qvec, embs, df)
         csv_path = save_dir / "ranking.csv"
         ranked.to_csv(csv_path, index=False)
-
         rep_path = save_dir / "biblio_report.txt"
         full_report(ranked, path=rep_path)
 
-        # bundle to ZIP for easy download
         zip_path = save_dir / "embedslr_results.zip"
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.write(csv_path, arcname="ranking.csv")
             zf.write(rep_path, arcname="biblio_report.txt")
 
-        # --- final UI ------------------------------------------------------------
-        with output:
+        with out:
             clear_output()
-            display(w.HTML("<h4>✅ Done – download:</h4>"))
+            display(w.HTML("<h4>✅ Finished — download your results:</h4>"))
             display(FileLink(str(zip_path), result_html_prefix="📦 "))
 
-    start_btn.on_click(_on_start)
+    start.on_click(_start)
 
-    # --- layout -----------------------------------------------------------------
+    # ------------------------------------------------ layout ---------------
     display(
         w.VBox(
             [
-                query_box,
+                query,
                 w.HBox([prov_dd, model_dd]),
                 api_key,
-                start_btn,
-                output,
+                start,
+                out,
             ]
         )
     )
