@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "embedslr"
+version = "0.2.0"
+description = "Embedding‑based screening and bibliometrics for SLRs"
+authors = [{name="EmbedSLR Dev Team", email="embedslr@proton.me"}]
+license = {text="MIT"}
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "pandas>=2.0",
+  "numpy>=1.22",
+  "scikit-learn>=1.2",
+  "sentence-transformers>=2.5",
+  "openai>=1.14",
+  "cohere~=5.3",
+  "requests>=2.31",
+  "tqdm>=4.66",
+  "ipywidgets>=8.1"
+]
+
+[project.optional-dependencies]
+colab = ["google-colab"]
+dev   = ["pytest", "ruff", "black"]
+
+[project.scripts]
+embedslr = "embedslr.cli:main"
