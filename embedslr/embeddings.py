@@ -14,14 +14,28 @@ from .utils import chunk_iterable, getenv_or_raise, progress
 PROVIDERS = {"sbert", "openai", "cohere", "nomic", "jina"}
 
 
+
 def list_models() -> dict[str, list[str]]:
     return {
-        "sbert": ["sentence-transformers/all-mpnet-base-v2"],
-        "openai": ["text-embedding-ada-002", "text-embedding-3-small"],
-        "cohere": ["embed-english-v3.0"],
-        "nomic": ["nomic-embed-text-v1.5"],
-        "jina": ["jina-embeddings-v3"],
+        "sbert": [
+            "sentence-transformers/all-mpnet-base-v2",
+            "sentence-transformers/all-distilroberta-v1",
+            "sentence-transformers/all-MiniLM-L12-v2",
+            "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        ],
+        "openai": ["text-embedding-ada-002",
+                   "text-embedding-3-small",
+                   "text-embedding-3-large"],
+        "cohere": ["embed-english-v3.0",
+                   "embed-multilingual-v3.0",
+                   "embed-english-light-v3.0",
+                   "embed-multilingual-light-v3.0"],
+        "nomic":  ["nomic-embed-text-v1",
+                   "nomic-embed-text-v1.5"],
+        "jina":   ["jina-embeddings-v3"],
     }
+
 
 
 def get_embeddings(
