@@ -1,6 +1,17 @@
-# embedslr/colab_app.py   ——  v0.3.1  ——  MIT
+"""
+EmbedSLR – Colab / Jupyter launcher (widget‑free)
+================================================
+
+* Upload CSV (Scopus/WoS) → Query → Provider / Model → liczba TOP N
+* Generuje:
+  – ranking.csv  (pełna lista)  
+  – topN.csv     (N najbardziej podobnych)  
+  – biblio_report.txt  (8 wskaźników A–H obliczone na N)  
+  wszystko w ZIP → plik pobierany przez `google.colab.files.download()`
+"""
+
 from __future__ import annotations
-import io, os, shutil, sys, zipfile, tempfile
+import io, os, sys, zipfile, tempfile, shutil
 from pathlib import Path
 from typing import Dict, List
 
@@ -10,8 +21,8 @@ from IPython.display import HTML, clear_output, display
 IN_COLAB = "google.colab" in sys.modules
 
 
-# ─── utils ────────────────────────────────────────────────────────────────
-def _set_api_key(provider: str, key: str) -> None:
+# ───────────────────  helpers  ──────────────────────────────────────────────
+def _set_api_key(provider: str, key: str):
     env = {
         "openai": "OPENAI_API_KEY",
         "cohere": "COHERE_API_KEY",
@@ -22,18 +33,19 @@ def _set_api_key(provider: str, key: str) -> None:
         os.environ[env] = key
 
 
-def _models() -> Dict[str, List[str]]:
+def _all_models() -> Dict[str, List[str]]:
     from .embeddings import list_models
     return list_models()
 
 
-def _pipeline(df: pd.DataFrame, query: str, provider: str,
-              model: str, save_dir: Path) -> Path:
+def _pipeline(df: pd.DataFrame, query: str, provider: str, model: str,
+              save_dir: Path, *, top_n: int | None) -> Path:
     from .io import autodetect_columns, combine_title_abstract
     from .embeddings import get_embeddings
     from .similarity import rank_by_cosine
     from .bibliometrics import full_report
 
+    # --- przygotowanie tekstów --------------------------------------------
     tcol, acol = autodetect_columns(df)
     df["combined_text"] = combine_title_abstract(df, tcol, acol)
 
@@ -42,76 +54,96 @@ def _pipeline(df: pd.DataFrame, query: str, provider: str,
     qvec = get_embeddings([query], provider=provider, model=model)[0]
     ranked = rank_by_cosine(qvec, vecs, df)
 
-    csv_p = save_dir / "ranking.csv"
-    ranked.to_csv(csv_p, index=False)
-    rep_p = save_dir / "biblio_report.txt"
-    full_report(ranked, path=rep_p)
+    # --- zapisy ------------------------------------------------------------
+    csv_all = save_dir / "ranking.csv"
+    ranked.to_csv(csv_all, index=False)
 
-    zip_p = save_dir / "embedslr_results.zip"
-    with zipfile.ZipFile(zip_p, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(csv_p, arcname="ranking.csv")
-        zf.write(rep_p, arcname="biblio_report.txt")
-    return zip_p
+    if top_n is not None:
+        csv_top = save_dir / "topN.csv"
+        ranked.head(top_n).to_csv(csv_top, index=False)
+    else:
+        csv_top = None
+
+    rep_path = save_dir / "biblio_report.txt"
+    full_report(ranked, path=rep_path, top_n=top_n)
+
+    # --- zip ---------------------------------------------------------------
+    zip_path = save_dir / "embedslr_results.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(csv_all, "ranking.csv")
+        if csv_top:
+            z.write(csv_top, "topN.csv")
+        z.write(rep_path, "biblio_report.txt")
+    return zip_path
 
 
-# ─── Colab interactive mode (widget‑free) ─────────────────────────────────
+# ───────────────────  Colab interactive (native upload)  ───────────────────
 def _colab_mode(save_dir: Path):
     from google.colab import files  # type: ignore
 
     display(HTML(
         "<h3>EmbedSLR – interactive upload</h3>"
-        "<ol><li><b>Browse</b> → wybierz plik CSV.</li>"
+        "<ol><li><b>Browse</b> → wskaż CSV.</li>"
         "<li>Poczekaj na ✅.</li>"
-        "<li>Odpowiedz na pytania w konsoli.</li></ol>"
+        "<li>Wpisz odpowiedzi w konsoli.</li></ol>"
     ))
 
-    uploaded = files.upload()        # natywny dialog Colaba
+    uploaded = files.upload()
     if not uploaded:
-        display(HTML("<b style='color:red'>Brak pliku – przerywam.</b>"))
+        display(HTML("<b style='color:red'>No file uploaded – abort.</b>"))
         return
+
     fname, data = next(iter(uploaded.items()))
     df = pd.read_csv(io.BytesIO(data))
-    display(HTML(f"✅ Wczytano <code>{fname}</code> ({len(df)} rekordów)<br>"))
+    display(HTML(f"✅ Loaded <code>{fname}</code> ({len(df)} rows)<br>"))
 
-    query = input("❓ Query: ").strip()
-    provs = list(_models())
-    provider = input(f"Provider {provs} [default={provs[0]}]: ").strip() or provs[0]
-    model = input("Model (ENTER=default): ").strip() or _models()[provider][0]
-    key = input("API key (ENTER=pomiń): ").strip()
+    # --- pytania CLI -------------------------------------------------------
+    query = input("❓ Research query: ").strip()
+    providers = list(_all_models())
+    print("Providers:", providers)
+    provider = input(f"Provider [default={providers[0]}]: ").strip() or providers[0]
+
+    print("Models for", provider, "→")
+    for m in _all_models()[provider]:
+        print("  •", m)
+    model = input("Model [ENTER=1st]: ").strip() or _all_models()[provider][0]
+
+    top_raw = input("🔢 How many top papers for bibliometrics? [ENTER = all]: ").strip()
+    top_n = int(top_raw) if top_raw else None
+
+    key = input("API key (if needed, ENTER=skip): ").strip()
     if key:
         _set_api_key(provider, key)
 
     print("⏳ Running EmbedSLR …")
-    zip_tmp = _pipeline(df, query, provider, model, save_dir)
+    zip_tmp = _pipeline(df, query, provider, model, save_dir, top_n=top_n)
 
-    # ►► przenosimy ZIP do /content, aby był widoczny; potem download
-    zip_name = Path(zip_tmp).name
-    zip_final = Path.cwd() / zip_name
-    shutil.copy(zip_tmp, zip_final)
-
-    print(f"✅ Done. File saved as {zip_name}")
-    files.download(str(zip_final))     # wywołuje okno „Save file”
+    # przenosimy do /content + download
+    dst = Path.cwd() / zip_tmp.name
+    shutil.copy(zip_tmp, dst)
+    print("✅ Done – file:", dst.name)
+    files.download(str(dst))
 
 
-# ─── CLI fallback (zwykły Jupyter) ────────────────────────────────────────
+# ───────────────────  CLI fallback  ────────────────────────────────────────
 def _cli_mode(save_dir: Path):
-    print("== EmbedSLR CLI ==")
-    csv_path = input("CSV path: ").strip()
-    df = pd.read_csv(csv_path)
+    print("=== EmbedSLR CLI ===")
+    csv_p = Path(input("CSV path: ").strip())
+    df = pd.read_csv(csv_p)
     query = input("Query: ").strip()
-    prov = input("Provider (sbert/openai/cohere/nomic/jina): ").strip() or "sbert"
-    model = input("Model (ENTER=default): ").strip() or _models()[prov][0]
-    key = input("API key (ENTER=skip): ").strip()
+    prov = input("Provider [sbert]: ").strip() or "sbert"
+    model = input("Model [ENTER=default]: ").strip() or _all_models()[prov][0]
+    top_n = input("Top‑N [ENTER=all]: ").strip()
+    top_n = int(top_n) if top_n else None
+    key = input("API key [skip]: ").strip()
     if key:
         _set_api_key(prov, key)
+    zip_p = _pipeline(df, query, prov, model, save_dir, top_n=top_n)
+    print("ZIP saved at", zip_p)
 
-    zip_p = _pipeline(df, query, prov, model, save_dir)
-    print(f"ZIP saved: {zip_p}")
 
-
-# ─── public API ───────────────────────────────────────────────────────────
-def run(save_dir: str | os.PathLike | None = None) -> None:
-    """Start Colab interactive upload or simple CLI."""
+# ───────────────────  public  ──────────────────────────────────────────────
+def run(save_dir: str | os.PathLike | None = None):
     save_dir = Path(save_dir or tempfile.mkdtemp(prefix="embedslr_"))
     clear_output()
     if IN_COLAB:
