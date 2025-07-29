@@ -10,7 +10,7 @@ in systematic literature reviews using modern embedding models.
 git clone https://github.com/s-matysik/EmbedSLR_.git
 pip install -e ./EmbedSLR[colab]
 
-```Google Colab
+## Google Colab (local)
 !pip install git+https://github.com/s-matysik/EmbedSLR_.git
 from embedslr.colab_app import run
 run()
