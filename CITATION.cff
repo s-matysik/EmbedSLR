@@ -1,12 +1,14 @@
-If you use **EmbedSLR** in scientific work, please cite our accompanying *Software X* article:
-
-bibtex
-@article{Matysik2025,
-  title   = {EmbedSLR - an open Python framework for deterministic embeddingbased screening and bibliometric validation in systematic literature reviews },
-  author  = {Matysik, S., Wiśniewska, J., Frankowski P.K.},
-  journal = {SoftwareX},
-  year    = {2025},
-  note    = {in press},
-  doi     = {10.1016/j.softx.2025.XXXXXX},
-  url     = {https://doi.org/10.1016/j.softx.2025.XXXXXX}
-}
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "EmbedSLR – an open Python framework for deterministic embedding-based screening and bibliometric validation in systematic literature reviews"
+version: 1.0.0
+doi: 10.1016/j.softx.2025.XXXXXX
+date-released: 2025-01-01
+url: "https://github.com/s-matysik/EmbedSLR_"
+authors:
+  - family-names: "Matysik"
+    given-names: "S."
+  - family-names: "Wiśniewska"
+    given-names: "J."
+  - family-names: "Frankowski"
+    given-names: "P.K."
