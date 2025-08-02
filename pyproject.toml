@@ -28,3 +28,4 @@ dev   = ["pytest", "ruff", "black"]
 
 [project.scripts]
 embedslr = "embedslr.cli:main"
+embedslr-wizard = "embedslr.wizard:main"
