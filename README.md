@@ -27,12 +27,9 @@ run()
 If you use **EmbedSLR** in scientific work, please cite our accompanying *Software X* article:
 
 ```bibtex
-@article{Matysik2025,
+{
   title   = {EmbedSLR – an open Python framework for deterministic embedding‑based screening and bibliometric validation in systematic literature reviews},
   author  = {Matysik, S., Wiśniewska, J., Frankowski, P.K.},
-
   year    = {2025},
-
-
   url     = {https://github.com/s-matysik/EmbedSLR_/}
 }
