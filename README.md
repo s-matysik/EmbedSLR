@@ -24,7 +24,7 @@ run()
 
 ## 📝 Citing
 
-If you use **EmbedSLR** in scientific work, please cite our accompanying *Software X* article:
+If you use **EmbedSLR** in scientific work, please cite us:
 
 ```bibtex
 {
