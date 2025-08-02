@@ -6,10 +6,6 @@ in systematic literature reviews using modern embedding models.
 
 # EmbedSLR &nbsp;🚀
 
-[![PyPI](https://img.shields.io/pypi/v/embedslr)](https://pypi.org/project/embedslr/)
-[![CI](https://github.com/s‑matysik/EmbedSLR_/actions/workflows/ci.yml/badge.svg)](https://github.com/s‑matysik/EmbedSLR_/actions)
-[![docs](https://img.shields.io/badge/docs-online-success)](https://embedslr.github.io/embedslr/)
-[![License](https://img.shields.io/github/license/s‑matysik/EmbedSLR_)](LICENSE)
 
 > **EmbedSLR** is a concise Python framework that performs **deterministic, embedding‑based ranking** of publications and a **bibliometric audit** (keywords, authors, citations) to speed up the screening phase in systematic literature reviews.
 
