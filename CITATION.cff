@@ -2,7 +2,6 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "EmbedSLR – an open Python framework for deterministic embedding-based screening and bibliometric validation in systematic literature reviews"
 version: 1.0.0
-doi: 10.1016/j.softx.2025.XXXXXX
 date-released: 2025-01-01
 url: "https://github.com/s-matysik/EmbedSLR_"
 authors:
