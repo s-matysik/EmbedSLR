@@ -10,14 +10,7 @@
 
 ---
 
-## ✨ Quick start (Google Colab)
-
-```bash
-!pip install git+https://github.com/s-matysik/EmbedSLR_.git
-from embedslr.colab_app import run
-run()
-
-## 📝 Citing
+#### 📝 Citing
 
 If you use **EmbedSLR** in scientific work, please cite our accompanying *Software X* article:
 
@@ -31,3 +24,13 @@ If you use **EmbedSLR** in scientific work, please cite our accompanying *Softwa
   doi     = {10.1016/j.softx.2025.XXXXXX},
   url     = {https://doi.org/10.1016/j.softx.2025.XXXXXX}
 }
+
+---
+
+## ✨ Quick start (Google Colab)
+
+```bash
+!pip install git+https://github.com/s-matysik/EmbedSLR_.git
+from embedslr.colab_app import run
+run()
+
