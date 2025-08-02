@@ -1,0 +1,12 @@
+==== BIBLIOMETRIC REPORT ====
+Avg shared refs / pair          : 0.5770
+Jaccard refs                    : 0.0026
+Avg shared kws / pair           : 0.4621
+Jaccard kws                     : 0.0525
+Pairs ≥1 common ref             : 117
+Unique common refs              : 113
+Sum intersections refs          : 251
+Pairs ≥1 common kw              : 177
+KWs in ≥2 articles              : 14
+Avg mutual citations            : 0.0391
+Total mutual citations          : 14
