@@ -1,133 +1,170 @@
 """
-Interaktywny kreator EmbedSLR 
-Uruchom:  $ embedslr-wizard
+embedslr.wizard
+===============
 
+Interaktywny kreator do uruchamiania EmbedSLR poza Google Colab.
+• wczytuje eksport Scopus/WoS (CSV)
+• pobiera zapytanie badawcze
+• pozwala wybrać dostawcę i model embeddingów
+• opcjonalnie zawęża Top‑N publikacji do analizy bibliometrycznej
+• tworzy komplet wyników (CSV + raport + ZIP)
+
+Uruchom:
+    python -m embedslr.wizard
 """
+
 from __future__ import annotations
-import os, sys, zipfile, shutil, tempfile, textwrap, datetime as dt
+
+import json
+import sys
+import textwrap
+import zipfile
 from pathlib import Path
+from typing import List
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
-from .embeddings import list_models, get_embeddings
+from .embeddings import PROVIDERS, get_embeddings, list_models
+from .metrics import full_report
 
-# ╭──────────────────────────────────────────────────────╮
-# │  1.  Pobranie danych wejściowych                     │
-# ╰──────────────────────────────────────────────────────╯
-print("📦  Ścieżka do pliku CSV ze Scopus/WoS:")
-csv_path = Path(input(">> ").strip()).expanduser()
-if not csv_path.exists():
-    sys.exit(f"❌  Nie znaleziono pliku: {csv_path}")
 
-df = pd.read_csv(csv_path, low_memory=False)
-print(f"✅  Załadowano {len(df)} rekordów, kolumny: {list(df.columns)[:8]}...")
+# ───────────────────────────────────────
+# Pomocnicze funkcje CLI
+# ───────────────────────────────────────
+def _choose(prompt: str, options: List[str], default: str | None = None) -> str:
+    """Prosty wybór z listy opcji."""
+    while True:
+        print(prompt)
+        for i, o in enumerate(options, 1):
+            print(f"  {i}. {o}")
+        ans = input(f"⇒ [ENTER = {default or '1'}] ").strip()
+        if not ans:
+            return default or options[0]
+        # numer
+        if ans.isdigit() and 1 <= int(ans) <= len(options):
+            return options[int(ans) - 1]
+        # nazwa
+        if ans in options:
+            return ans
+        print("✖ Niepoprawny wybór – spróbuj ponownie.\n")
 
-query = input("❓  Podaj problem badawczy / query:\n>> ").strip()
 
-# ╭──────────────────────────────────────────────────────╮
-# │  2.  Wybór providera i modelu                       │
-# ╰──────────────────────────────────────────────────────╯
-prov_list = list(list_models().keys())
-print("\n📜  Dostępni providerzy:", prov_list)
-provider = input(f"Provider [default={prov_list[0]}]: ").strip() or prov_list[0]
+def _detect_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    for c in candidates:
+        if c in df.columns:
+            return c
+    return None
 
-models = list_models()[provider]
-print(f"\n📜  Modele dla {provider}  (pierwsze 20):")
-for i, m in enumerate(models[:20], 1):
-    print(f"  {i:2d}. {m}")
-model = input("Model [ENTER = 1‑szy z listy lub dowolna nazwa]: ").strip() or models[0]
 
-# ╭──────────────────────────────────────────────────────╮
-# │  3.  Top‑N + klucze API                             │
-# ╰──────────────────────────────────────────────────────╯
-try:
-    topN = int(input("🔢  Top‑N publikacji do analizy bibliometrycznej [ENTER = wszystkie]: ") or 0)
-except ValueError:
-    topN = 0
+def _combine_title_abstract(df: pd.DataFrame) -> pd.Series:
+    """Zwraca serię 'tytuł + abstrakt'."""
+    title_col = _detect_column(df, ["Article Title", "Title", "TI"])
+    abs_col = _detect_column(df, ["Abstract", "AB"])
+    if title_col is None:
+        raise RuntimeError("❌ Nie wykryto kolumny z tytułem w CSV.")
+    print(f"✓ Używam kolumny '{title_col}'" +
+          (f" oraz '{abs_col}'" if abs_col else "") + ".")
+    out = df[title_col].astype(str)
+    if abs_col:
+        out = out + " " + df[abs_col].astype(str)
+    return out
 
-need_key = provider in {"openai", "cohere", "nomic", "jina"}
-if need_key and not os.getenv(f"{provider.upper()}_API_KEY"):
-    key = input(f"🔑  Podaj {provider.upper()}_API_KEY (ENTER = pomiń): ").strip()
-    if key:
-        os.environ[f"{provider.upper()}_API_KEY"] = key
 
-# ╭──────────────────────────────────────────────────────╮
-# │  4.  Przygotowanie tekstów                          │
-# ╰──────────────────────────────────────────────────────╯
-title_col = next((c for c in ('Article Title', 'Title', 'TI') if c in df.columns), None)
-abstr_col = next((c for c in ('Abstract', 'AB') if c in df.columns), None)
-if not title_col:
-    sys.exit("❌  Nie znaleziono kolumny z tytułem (Title).")
+# ───────────────────────────────────────
+# Minimalny parser referencji (jak w Colab)
+# ───────────────────────────────────────
+def _parse_references_if_missing(df: pd.DataFrame) -> None:
+    if "Parsed_References" in df.columns or "References" not in df.columns:
+        return
 
-df["combined_text"] = (
-    df[title_col].fillna("").astype(str) + " " +
-    (df[abstr_col].fillna("").astype(str) if abstr_col else "")
-)
+    def _old_parse(r: str) -> set[str]:
+        if pd.isna(r):
+            return set()
+        parts = [s.strip() for s in str(r).split(");") if s.strip()]
+        return set(parts)
 
-texts = df["combined_text"].tolist()
+    df["Parsed_References"] = df["References"].apply(_old_parse)
 
-# ╭──────────────────────────────────────────────────────╮
-# │  5.  Embeddingi i distance_cosine                   │
-# ╰──────────────────────────────────────────────────────╯
-print("\n⏳  Liczę embedding dla zapytania…")
-emb_q = np.array(get_embeddings([query], provider=provider, model=model)[0])
 
-print("⏳  Liczę embeddingi dla artykułów…")
-emb_a = np.array(get_embeddings(texts, provider=provider, model=model))
+# ───────────────────────────────────────
+# Główna logika kreatora
+# ───────────────────────────────────────
+def main() -> None:  # noqa: C901
+    print("\n📄  Ścieżka do pliku CSV z Scopus/WoS:")
+    csv_path = Path(input("> ").strip())
+    if not csv_path.exists():
+        sys.exit("Plik nie istnieje – przerwano.")
 
-dist = 1 - cosine_similarity([emb_q], emb_a)[0]
-df["distance_cosine"] = dist
-df_sorted = df.sort_values("distance_cosine")
+    df = pd.read_csv(csv_path, low_memory=False)
+    print(f"✓ Załadowano {len(df):,} rekordów.")
 
-# ╭──────────────────────────────────────────────────────╮
-# │  6.  Top‑N i zapis CSV                              │
-# ╰──────────────────────────────────────────────────────╯
-out_dir = Path.cwd()
-sorted_csv = out_dir / "articles_sorted_by_distance.csv"
-df_sorted.to_csv(sorted_csv, index=False)
-print(f"📄  Zapisano {sorted_csv}")
+    query = input("❓  Podaj problem badawczy / query: ").strip()
+    if not query:
+        sys.exit("Brak zapytania – przerwano.")
 
-if topN and topN < len(df_sorted):
-    df_top = df_sorted.head(topN)
-else:
-    df_top = df_sorted
-top_csv = out_dir / "topN_for_metrics.csv"
-df_top.to_csv(top_csv, index=False)
-print(f"📄  Zapisano {top_csv}")
+    provider = _choose("\n🌐  Dostępni providerzy:", sorted(PROVIDERS))
+    model_list = list_models()[provider]
+    show = model_list[:20]  # nie spamujemy całej listy
+    model_prompt = ("\n🧠  Modele dla "
+                    f"{provider} (pierwsze 20):\n" +
+                    "\n".join(f"  {i+1}. {m}" for i, m in enumerate(show)) +
+                    "\nModel [ENTER = 1‑szy z listy lub dowolna nazwa]: ")
+    chosen = input(model_prompt).strip()
+    model = (show[0] if not chosen or chosen.isdigit() and int(chosen) == 1
+             else (show[int(chosen)-1] if chosen.isdigit() else chosen))
 
-# ╭──────────────────────────────────────────────────────╮
-# │  7.  Bibliometrics (8 wskaźników)                   │
-# ╰──────────────────────────────────────────────────────╯
-try:
-    from embedslr.metrics import compute_metrics  # istnieje w repo
-except ImportError:
-    # fallback – wklejone krótkie podsumowanie słów kluczowych
-    def compute_metrics(df_in: pd.DataFrame) -> dict[str, float | int]:
-        kws = df_in.get("Author Keywords", pd.Series(dtype=str)).fillna("")
-        kws = kws.str.split(";").explode().str.lower().str.strip()
-        total_pairs = len(df_in) * (len(df_in) - 1) // 2
-        return {
-            "avg_common_keywords": kws.value_counts().gt(1).sum() / max(total_pairs, 1),
-            "keywords_>=2_articles": kws.value_counts().gt(1).sum(),
-        }
+    topn_str = input("🔢  Top‑N publikacji do analizy bibliometrycznej "
+                     "[ENTER = wszystkie]: ").strip()
+    top_n = int(topn_str) if topn_str else None
 
-metrics = compute_metrics(df_top)
-report_path = out_dir / "biblio_report.txt"
-with report_path.open("w", encoding="utf-8") as f:
-    f.write("==== BIBLIOMETRIC REPORT ====\n")
-    for k, v in metrics.items():
-        f.write(f"{k:<35}: {v}\n")
-print(f"📄  Zapisano {report_path}")
+    # ------------------------------------------------------------------ EMB
+    texts = _combine_title_abstract(df).tolist()
 
-# ╭──────────────────────────────────────────────────────╮
-# │  8.  ZIP‑pakiet do pobrania                         │
-# ╰──────────────────────────────────────────────────────╯
-zip_path = out_dir / "embedslr_results.zip"
-with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-    for p in (sorted_csv, top_csv, report_path):
-        z.write(p, arcname=p.name)
-print(f"🎁  Gotowe – {zip_path}")
+    print("\n⏳  Liczę embedding dla zapytania…")
+    query_emb = get_embeddings([query], provider=provider, model=model)[0]
 
-print("\n✔️  KONIEC.  Pliki znajdziesz w bieżącym katalogu.")
+    print("⏳  Liczę embeddingi dla artykułów…")
+    art_embs = get_embeddings(texts, provider=provider, model=model)
+    if len(art_embs) != len(texts):
+        sys.exit("❌ Embedding count mismatch – przerwano.")
+
+    # ------------------------------------------------------------------ COSINE
+    sims = cosine_similarity([np.array(query_emb)], np.array(art_embs))[0]
+    df["distance_cosine"] = 1 - sims
+    df["combined_embeddings"] = [json.dumps(v) for v in art_embs]
+    df_sorted = df.sort_values("distance_cosine")
+
+    # zapisy
+    out_sorted = "articles_sorted_by_distance.csv"
+    df_sorted.to_csv(out_sorted, index=False)
+    print(f"✓ Zapisano {out_sorted}")
+
+    df_for_metrics = df_sorted.head(top_n) if top_n else df_sorted
+    _parse_references_if_missing(df_for_metrics)
+
+    out_topn = "topN_for_metrics.csv"
+    df_for_metrics.to_csv(out_topn, index=False)
+    print(f"✓ Zapisano {out_topn}")
+
+    # ------------------------------------------------------------------ REPORT
+    report_txt = full_report(df_for_metrics, path="biblio_report.txt")
+    print(report_txt)
+    print("✓ Zapisano biblio_report.txt")
+
+    # ------------------------------------------------------------------ ZIP
+    with zipfile.ZipFile("embedslr_results.zip", "w",
+                         compression=zipfile.ZIP_DEFLATED) as zf:
+        for f in (out_sorted, out_topn, "biblio_report.txt"):
+            zf.write(f)
+    print("📦 Gotowe – embedslr_results.zip")
+
+    print("\n✅ KONIEC. Pliki znajdziesz w bieżącym katalogu.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit("\nPrzerwano przez użytkownika.")
