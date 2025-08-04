@@ -1,191 +1,150 @@
-"""embedslr.wizard – interactive CLI for EmbedSLR
-=================================================
-
-Loads a bibliographic CSV, embeds records, ranks them by cosine distance to
-a user query and produces a bibliometric report + sorted CSV + ZIP package.
-
-Key fixes compared with the previous revision:
-* Automatic extraction of reference / keyword lists (df['refs'], df['kws'])
-* The bibliometric report is run on Top‑N ranked records, not the full set
 """
-
+Interaktywny kreator EmbedSLR
+Uruchom:  $ embedslr-wizard
+"""
 from __future__ import annotations
 
-import json
-import re
+import os
 import sys
 import zipfile
+import shutil
+import tempfile
+import textwrap
+import datetime as dt
 from pathlib import Path
-from typing import List, Optional
 
+import numpy as np
 import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
 
-from .embeddings import get_embeddings, list_models
-from .io import read_csv, autodetect_columns, combine_title_abstract
-from .similarity import rank_by_cosine
-from .bibliometrics import full_report
+from .embeddings import list_models, get_embeddings
 
-# ──────────────────────────────────────────────────────────────
-# Helpers – user interaction
-# ──────────────────────────────────────────────────────────────
-def _prompt(msg: str, default: Optional[str] = None) -> str:
-    tail = f" [default={default}]" if default else ""
-    ans = input(f"{msg}{tail}: ").strip()
-    return ans or (default or "")
+# ╭──────────────────────────────────────────────────────╮
+# │  1.  Pobranie danych wejściowych                     │
+# ╰──────────────────────────────────────────────────────╯
+print("📦  Ścieżka do pliku CSV ze Scopus/WoS:")
+csv_path = Path(input(">> ").strip()).expanduser()
+if not csv_path.exists():
+    sys.exit(f"❌  Nie znaleziono pliku: {csv_path}")
 
+df = pd.read_csv(csv_path, low_memory=False)
+print(f"✅  Załadowano {len(df)} rekordów, kolumny: {list(df.columns)[:8]}...")
 
-def _pick_from_list(name: str, options: list[str], default: Optional[str]) -> str:
-    print(f"\n{name} options:")
-    for idx, opt in enumerate(options, 1):
-        print(f"  {idx:>2}. {opt}")
-    choice = _prompt(f"Choose {name.lower()}", default)
-    if choice.isdigit():
-        idx = int(choice) - 1
-        if not 0 <= idx < len(options):
-            sys.exit(f"ERROR: {name} index out of range.")
-        return options[idx]
-    if choice in options:
-        return choice
-    sys.exit(f"ERROR: unknown {name.lower()} '{choice}'.")
+query = input("❓  Podaj problem badawczy / query:\n>> ").strip()
 
+# ╭──────────────────────────────────────────────────────╮
+# │  2.  Wybór providera i modelu                       │
+# ╰──────────────────────────────────────────────────────╯
+prov_list = list(list_models().keys())
+print("\n📜  Dostępni providerzy:", prov_list)
+provider = input(f"Provider [default={prov_list[0]}]: ").strip() or prov_list[0]
 
-# ──────────────────────────────────────────────────────────────
-# Helpers – data preparation
-# ──────────────────────────────────────────────────────────────
-_REF_COLS = {"references", "refs", "reference list"}
-_KW_COLS = {
-    "author keywords",
-    "index keywords",
-    "keywords",
-    "authkeywords",
-    "keyword list",
-}
+models = list_models()[provider]
+print(f"\n📜  Modele dla {provider}  (pierwsze 20):")
+for i, m in enumerate(models[:20], 1):
+    print(f"  {i:2d}. {m}")
+model = input("Model [ENTER = 1‑szy z listy lub dowolna nazwa]: ").strip() or models[0]
 
+# ╭──────────────────────────────────────────────────────╮
+# │  3.  Top‑N + klucze API                             │
+# ╰──────────────────────────────────────────────────────╯
+try:
+    topN = int(input("🔢  Top‑N publikacji do analizy bibliometrycznej [ENTER = wszystkie]: ") or 0)
+except ValueError:
+    topN = 0
 
-def _extract_lists_from_string(s: str | float) -> List[str]:
-    """Split a Scopus / WoS reference or keyword field into a list."""
-    if not isinstance(s, str):
-        return []
-    # Scopus separates with '; '  whereas WoS often uses ';' or ','
-    parts = re.split(r";\s*|,\s*", s)
-    return [p.strip() for p in parts if p.strip()]
+need_key = provider in {"openai", "cohere", "nomic", "jina"}
+if need_key and not os.getenv(f"{provider.upper()}_API_KEY"):
+    key = input(f"🔑  Podaj {provider.upper()}_API_KEY (ENTER = pomiń): ").strip()
+    if key:
+        os.environ[f"{provider.upper()}_API_KEY"] = key
 
+# ╭──────────────────────────────────────────────────────╮
+# │  4.  Przygotowanie tekstów                          │
+# ╰──────────────────────────────────────────────────────╯
+title_col = next((c for c in ("Article Title", "Title", "TI") if c in df.columns), None)
+abstr_col = next((c for c in ("Abstract", "AB") if c in df.columns), None)
+if not title_col:
+    sys.exit("❌  Nie znaleziono kolumny z tytułem (Title).")
 
-def _add_refs_and_kws_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Find reference / keyword columns and create df['refs'] & df['kws']."""
-    lower_cols = {c.lower(): c for c in df.columns}
-    # References
-    ref_col = next((lower_cols[c] for c in _REF_COLS if c in lower_cols), None)
+df["combined_text"] = (
+    df[title_col].fillna("").astype(str) + " " +
+    (df[abstr_col].fillna("").astype(str) if abstr_col else "")
+)
+texts = df["combined_text"].tolist()
+
+# ╭──────────────────────────────────────────────────────╮
+# │  5.  Embeddingi i distance_cosine                   │
+# ╰──────────────────────────────────────────────────────╯
+print("\n⏳  Liczę embedding dla zapytania…")
+emb_q = np.array(get_embeddings([query], provider=provider, model=model)[0])
+
+print("⏳  Liczę embeddingi dla artykułów…")
+emb_a = np.array(get_embeddings(texts, provider=provider, model=model))
+
+dist = 1 - cosine_similarity([emb_q], emb_a)[0]
+df["distance_cosine"] = dist
+df_sorted = df.sort_values("distance_cosine")
+
+# ╭──────────────────────────────────────────────────────╮
+# │  6.  Top‑N i zapis CSV                              │
+# ╰──────────────────────────────────────────────────────╯
+out_dir = Path.cwd()
+sorted_csv = out_dir / "articles_sorted_by_distance.csv"
+df_sorted.to_csv(sorted_csv, index=False)
+print(f"📄  Zapisano {sorted_csv}")
+
+if topN and topN < len(df_sorted):
+    df_top = df_sorted.head(topN)
+else:
+    df_top = df_sorted
+
+top_csv = out_dir / "topN_for_metrics.csv"
+df_top.to_csv(top_csv, index=False)
+print(f"📄  Zapisano {top_csv}")
+
+# ── standaryzacja kolumn ────────────────────────────────────────────────
+# tytuł
+if "Title" not in df_top.columns and "Article Title" in df_top.columns:
+    df_top = df_top.copy()
+    df_top.rename(columns={"Article Title": "Title"}, inplace=True)
+
+# słowa kluczowe
+if "Author Keywords" not in df_top.columns:
+    df_top["Author Keywords"] = ""
+
+# referencje → Parsed_References jako sety
+if "Parsed_References" not in df_top.columns:
+    import re
+
+    ref_col = next((c for c in ("References", "Cited References") if c in df_top.columns), None)
     if ref_col:
-        df["refs"] = df[ref_col].apply(_extract_lists_from_string)
+        def _parse(refs: str | float) -> set[str]:
+            if not isinstance(refs, str):
+                return set()
+            return {p.lower().strip() for p in re.split(r";|\n", refs) if p.strip()}
+
+        df_top["Parsed_References"] = df_top[ref_col].apply(_parse)
     else:
-        df["refs"] = [[]] * len(df)
+        df_top["Parsed_References"] = [set()] * len(df_top)
 
-    # Keywords – merge author & index if both exist
-    kw_cols_found = [lower_cols[c] for c in _KW_COLS if c in lower_cols]
-    if kw_cols_found:
-        df["kws"] = (
-            df[kw_cols_found]
-            .astype(str)
-            .agg("; ".join, axis=1)
-            .apply(_extract_lists_from_string)
-        )
-    else:
-        df["kws"] = [[]] * len(df)
+# ╭──────────────────────────────────────────────────────╮
+# │  7.  Bibliometrics (10 wskaźników)                  │
+# ╰──────────────────────────────────────────────────────╯
+from embedslr.bibliometrics import full_report
 
-    # Warn if nearly all lists are empty – indicates wrong column mapping
-    empty_refs = df["refs"].str.len().le(0).sum()
-    empty_kws = df["kws"].str.len().le(0).sum()
-    if empty_refs > 0.95 * len(df):
-        print(
-            "⚠️  Warning: >95 % rows have no references. "
-            "Check if the reference column name is recognised."
-        )
-    if empty_kws > 0.95 * len(df):
-        print(
-            "⚠️  Warning: >95 % rows have no keywords. "
-            "Check if the keyword column name is recognised."
-        )
-    return df
+report_path = out_dir / "biblio_report.txt"
+report_txt = full_report(df_top, path=report_path)  # zapis + zwrot stringa
+print(report_txt)
+print(f"📄  Zapisano {report_path}")
 
+# ╭──────────────────────────────────────────────────────╮
+# │  8.  ZIP‑pakiet do pobrania                         │
+# ╰──────────────────────────────────────────────────────╯
+zip_path = out_dir / "embedslr_results.zip"
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+    for p in (sorted_csv, top_csv, report_path):
+        z.write(p, arcname=p.name)
+print(f"🎁  Gotowe – {zip_path}")
 
-# ──────────────────────────────────────────────────────────────
-# Main workflow
-# ──────────────────────────────────────────────────────────────
-def main() -> None:
-    print("\nEmbedSLR – command‑line wizard\n")
-
-    # 1. Read CSV --------------------------------------------------------------
-    csv_path = Path(_prompt("CSV file path")).expanduser()
-    if not csv_path.is_file():
-        sys.exit(f"ERROR: file not found – {csv_path}")
-    df = read_csv(str(csv_path))
-    print(f"Loaded file with {len(df)} rows and {len(df.columns)} columns.\n")
-
-    # 2. Detect title & abstract; create combined_text -------------------------
-    try:
-        title_col, abs_col = autodetect_columns(df)
-    except ValueError as e:
-        sys.exit(f"{e} – please rename columns or edit the CSV.")
-    df["combined_text"] = combine_title_abstract(df, title_col, abs_col)
-
-    # 3. Add refs + kws columns (critical for full_report) ---------------------
-    df = _add_refs_and_kws_columns(df)
-
-    # 4. Research query --------------------------------------------------------
-    query = _prompt("Research query").strip()
-    if not query:
-        sys.exit("ERROR: query cannot be empty.")
-
-    # 5. Provider / model ------------------------------------------------------
-    providers = list(list_models().keys())
-    provider = _pick_from_list("Provider", providers, default=providers[0])
-    models = list_models()[provider]
-    model = _pick_from_list("Model", models, default=models[0])
-
-    # 6. Top‑N filter ----------------------------------------------------------
-    top_n_str = _prompt("Top‑N filter for bibliometric report (press Enter for all)")
-    top_n = int(top_n_str) if top_n_str.isdigit() else None
-
-    # 7. Embeddings ------------------------------------------------------------
-    print("\n⏳ Embedding the research query…")
-    query_vec = get_embeddings([query], provider=provider, model=model)[0]
-
-    print("⏳ Embedding documents… (this may take a while)")
-    doc_vecs = get_embeddings(df["combined_text"].tolist(), provider=provider, model=model)
-
-    # 8. Rank by cosine distance ----------------------------------------------
-    df_ranked = rank_by_cosine(query_vec, doc_vecs, df)
-
-    # 9. Slice Top‑N for the report -------------------------------------------
-    if top_n is not None and 0 < top_n < len(df_ranked):
-        df_report = df_ranked.head(top_n).copy()
-    else:
-        df_report = df_ranked.copy()
-
-    # 10. Bibliometric report --------------------------------------------------
-    report_txt = full_report(df_report)
-    print("\n==== BIBLIOMETRIC REPORT (Top‑{}) ====\n".format(top_n or "ALL"))
-    print(report_txt + "\n")
-
-    # 11. Persist results ------------------------------------------------------
-    out_csv = Path("articles_sorted_by_distance.csv")
-    out_txt = Path("bibliometric_report.txt")
-    df_ranked["combined_embeddings"] = [json.dumps(v) for v in doc_vecs]
-    df_ranked.to_csv(out_csv, index=False)
-    out_txt.write_text(report_txt, encoding="utf-8")
-    print(f"Saved: {out_csv}  •  {out_txt}")
-
-    # 12. Pack everything into ZIP --------------------------------------------
-    zip_name = "embedslr_results.zip"
-    with zipfile.ZipFile(zip_name, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(out_csv)
-        zf.write(out_txt)
-    print(f"Packed results → {zip_name}\n")
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\nInterrupted by user.")
+print("\n✔️  KONIEC.  Pliki znajdziesz w bieżącym katalogu.")
