@@ -1,143 +1,191 @@
-"""
-Interactive CLI “wizard” for EmbedSLR
--------------------------------------
+"""embedslr.wizard – interactive CLI for EmbedSLR
+=================================================
 
-This script is intentionally *thin*: it only orchestrates I/O and user
-interaction.  All heavy lifting is delegated to the public APIs exposed in
+Loads a bibliographic CSV, embeds records, ranks them by cosine distance to
+a user query and produces a bibliometric report + sorted CSV + ZIP package.
 
-* embedslr.embeddings      – get_embeddings, list_models
-* embedslr.metrics / bibliometric – full_report
-
-so that **one single implementation of every feature** is shared between the
-Colab notebook and the local CLI.
-
-Run with::
-
-    python -m embedslr.wizard
+Key fixes compared with the previous revision:
+* Automatic extraction of reference / keyword lists (df['refs'], df['kws'])
+* The bibliometric report is run on Top‑N ranked records, not the full set
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
+import zipfile
 from pathlib import Path
-from textwrap import indent
+from typing import List, Optional
 
-import numpy as np
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# Imports that *must* already exist in the package
-# ---------------------------------------------------------------------------
-from embedslr.embeddings import get_embeddings, list_models
+from .embeddings import get_embeddings, list_models
+from .io import read_csv, autodetect_columns, combine_title_abstract
+from .similarity import rank_by_cosine
+from .bibliometrics import full_report
 
-# full_report lives either in metrics.py (newer versions) or bibliometric.py
-try:
-    from embedslr.metrics import full_report  # type: ignore
-except ModuleNotFoundError:                   # pragma: no cover
-    from embedslr.bibliometric import full_report  # type: ignore
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _ask(question: str, default: str | None = None) -> str:
-    """Prompt the user; return reply or *default* if blank."""
-    prompt = f"{question.strip()} "
-    if default is not None:
-        prompt += f"[ENTER = {default}] "
-    reply = input(prompt).strip()
-    return reply if reply else (default or "")
+# ──────────────────────────────────────────────────────────────
+# Helpers – user interaction
+# ──────────────────────────────────────────────────────────────
+def _prompt(msg: str, default: Optional[str] = None) -> str:
+    tail = f" [default={default}]" if default else ""
+    ans = input(f"{msg}{tail}: ").strip()
+    return ans or (default or "")
 
 
-def _choose_from_list(title: str, options: list[str], default_idx: int = 0) -> str:
-    print(f"\n{title}")
-    for i, opt in enumerate(options, 1):
-        print(f"  {i:>2}) {opt}")
-    while True:
-        sel = _ask("Choice number", str(default_idx + 1))
-        if sel.isdigit() and 1 <= int(sel) <= len(options):
-            return options[int(sel) - 1]
-        print("Invalid selection – please try again.")
+def _pick_from_list(name: str, options: list[str], default: Optional[str]) -> str:
+    print(f"\n{name} options:")
+    for idx, opt in enumerate(options, 1):
+        print(f"  {idx:>2}. {opt}")
+    choice = _prompt(f"Choose {name.lower()}", default)
+    if choice.isdigit():
+        idx = int(choice) - 1
+        if not 0 <= idx < len(options):
+            sys.exit(f"ERROR: {name} index out of range.")
+        return options[idx]
+    if choice in options:
+        return choice
+    sys.exit(f"ERROR: unknown {name.lower()} '{choice}'.")
 
 
-def _combine_title_abstract(df: pd.DataFrame) -> pd.Series:
-    possible_title = ["Article Title", "Title", "TI"]
-    possible_abstr = ["Abstract", "AB"]
-
-    def first(colnames):
-        return next((c for c in colnames if c in df.columns), None)
-
-    t_col = first(possible_title)
-    a_col = first(possible_abstr)
-    if not t_col and not a_col:
-        sys.exit("❌  CSV file lacks both title *and* abstract columns.")
-
-    def _row(r):
-        return f"{r.get(t_col,'')} {r.get(a_col,'')}".strip()
-
-    return df.apply(_row, axis=1)
+# ──────────────────────────────────────────────────────────────
+# Helpers – data preparation
+# ──────────────────────────────────────────────────────────────
+_REF_COLS = {"references", "refs", "reference list"}
+_KW_COLS = {
+    "author keywords",
+    "index keywords",
+    "keywords",
+    "authkeywords",
+    "keyword list",
+}
 
 
-# ---------------------------------------------------------------------------
-# Main routine
-# ---------------------------------------------------------------------------
+def _extract_lists_from_string(s: str | float) -> List[str]:
+    """Split a Scopus / WoS reference or keyword field into a list."""
+    if not isinstance(s, str):
+        return []
+    # Scopus separates with '; '  whereas WoS often uses ';' or ','
+    parts = re.split(r";\s*|,\s*", s)
+    return [p.strip() for p in parts if p.strip()]
 
-def main() -> None:  # noqa: C901  (complexity is fine for a tiny CLI)
-    print("EmbedSLR – interactive CLI\n")
 
-    # 1. Load CSV ------------------------------------------------------------
-    csv_path = Path(_ask("Path to Scopus / Web‑of‑Science CSV file")).expanduser()
+def _add_refs_and_kws_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Find reference / keyword columns and create df['refs'] & df['kws']."""
+    lower_cols = {c.lower(): c for c in df.columns}
+    # References
+    ref_col = next((lower_cols[c] for c in _REF_COLS if c in lower_cols), None)
+    if ref_col:
+        df["refs"] = df[ref_col].apply(_extract_lists_from_string)
+    else:
+        df["refs"] = [[]] * len(df)
+
+    # Keywords – merge author & index if both exist
+    kw_cols_found = [lower_cols[c] for c in _KW_COLS if c in lower_cols]
+    if kw_cols_found:
+        df["kws"] = (
+            df[kw_cols_found]
+            .astype(str)
+            .agg("; ".join, axis=1)
+            .apply(_extract_lists_from_string)
+        )
+    else:
+        df["kws"] = [[]] * len(df)
+
+    # Warn if nearly all lists are empty – indicates wrong column mapping
+    empty_refs = df["refs"].str.len().le(0).sum()
+    empty_kws = df["kws"].str.len().le(0).sum()
+    if empty_refs > 0.95 * len(df):
+        print(
+            "⚠️  Warning: >95 % rows have no references. "
+            "Check if the reference column name is recognised."
+        )
+    if empty_kws > 0.95 * len(df):
+        print(
+            "⚠️  Warning: >95 % rows have no keywords. "
+            "Check if the keyword column name is recognised."
+        )
+    return df
+
+
+# ──────────────────────────────────────────────────────────────
+# Main workflow
+# ──────────────────────────────────────────────────────────────
+def main() -> None:
+    print("\nEmbedSLR – command‑line wizard\n")
+
+    # 1. Read CSV --------------------------------------------------------------
+    csv_path = Path(_prompt("CSV file path")).expanduser()
     if not csv_path.is_file():
-        sys.exit(f"❌  File not found: {csv_path}")
-    df = pd.read_csv(csv_path, low_memory=False)
-    print(f"✅  Loaded {len(df)} records from «{csv_path.name}»")
+        sys.exit(f"ERROR: file not found – {csv_path}")
+    df = read_csv(str(csv_path))
+    print(f"Loaded file with {len(df)} rows and {len(df.columns)} columns.\n")
 
-    # 2. Research question ---------------------------------------------------
-    query = _ask("Research question / problem statement")
+    # 2. Detect title & abstract; create combined_text -------------------------
+    try:
+        title_col, abs_col = autodetect_columns(df)
+    except ValueError as e:
+        sys.exit(f"{e} – please rename columns or edit the CSV.")
+    df["combined_text"] = combine_title_abstract(df, title_col, abs_col)
+
+    # 3. Add refs + kws columns (critical for full_report) ---------------------
+    df = _add_refs_and_kws_columns(df)
+
+    # 4. Research query --------------------------------------------------------
+    query = _prompt("Research query").strip()
     if not query:
-        sys.exit("❌  Research question must not be empty.")
+        sys.exit("ERROR: query cannot be empty.")
 
-    # 3. Provider & model ----------------------------------------------------
-    models_by_provider = list_models()
-    provider = _choose_from_list("Select embedding provider:",
-                                 sorted(models_by_provider))
-    model = _choose_from_list(f"Models for {provider}:",
-                              models_by_provider[provider])
+    # 5. Provider / model ------------------------------------------------------
+    providers = list(list_models().keys())
+    provider = _pick_from_list("Provider", providers, default=providers[0])
+    models = list_models()[provider]
+    model = _pick_from_list("Model", models, default=models[0])
 
-    top_n_str = _ask("Top‑N lowest‑distance papers to include in metrics "
-                     "(ENTER = all)", "")
+    # 6. Top‑N filter ----------------------------------------------------------
+    top_n_str = _prompt("Top‑N filter for bibliometric report (press Enter for all)")
     top_n = int(top_n_str) if top_n_str.isdigit() else None
 
-    # 4. Build documents -----------------------------------------------------
-    df["combined_text"] = _combine_title_abstract(df)
-    texts = df["combined_text"].tolist()
+    # 7. Embeddings ------------------------------------------------------------
+    print("\n⏳ Embedding the research query…")
+    query_vec = get_embeddings([query], provider=provider, model=model)[0]
 
-    # 5. Embeddings ----------------------------------------------------------
-    print("\n⏳  Generating embeddings…")
-    article_embs = get_embeddings(texts, provider=provider, model=model)
-    query_emb    = get_embeddings([query], provider=provider, model=model)[0]
+    print("⏳ Embedding documents… (this may take a while)")
+    doc_vecs = get_embeddings(df["combined_text"].tolist(), provider=provider, model=model)
 
-    # 6. Cosine distances ----------------------------------------------------
-    sims = (np.dot(article_embs, query_emb) /
-            (np.linalg.norm(article_embs, axis=1) * np.linalg.norm(query_emb)))
-    df["distance_cosine"] = 1 - sims
+    # 8. Rank by cosine distance ----------------------------------------------
+    df_ranked = rank_by_cosine(query_vec, doc_vecs, df)
 
-    # 7. Sort + save ---------------------------------------------------------
-    df_sorted = df.sort_values("distance_cosine")
-    out_csv = csv_path.with_suffix(".sorted.csv")
-    df_sorted.to_csv(out_csv, index=False)
-    print(f"📄  Saved sorted results → {out_csv}")
+    # 9. Slice Top‑N for the report -------------------------------------------
+    if top_n is not None and 0 < top_n < len(df_ranked):
+        df_report = df_ranked.head(top_n).copy()
+    else:
+        df_report = df_ranked.copy()
 
-    # 8. Bibliometric report -------------------------------------------------
-    report = full_report(df_sorted, top_n=top_n)
-    out_txt = csv_path.with_suffix(".report.txt")
-    Path(out_txt).write_text(report, encoding="utf‑8")
-    print(f"\n{indent(report, '│ ')}")
-    print(f"\n📄  Saved report        → {out_txt}\n")
+    # 10. Bibliometric report --------------------------------------------------
+    report_txt = full_report(df_report)
+    print("\n==== BIBLIOMETRIC REPORT (Top‑{}) ====\n".format(top_n or "ALL"))
+    print(report_txt + "\n")
+
+    # 11. Persist results ------------------------------------------------------
+    out_csv = Path("articles_sorted_by_distance.csv")
+    out_txt = Path("bibliometric_report.txt")
+    df_ranked["combined_embeddings"] = [json.dumps(v) for v in doc_vecs]
+    df_ranked.to_csv(out_csv, index=False)
+    out_txt.write_text(report_txt, encoding="utf-8")
+    print(f"Saved: {out_csv}  •  {out_txt}")
+
+    # 12. Pack everything into ZIP --------------------------------------------
+    zip_name = "embedslr_results.zip"
+    with zipfile.ZipFile(zip_name, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(out_csv)
+        zf.write(out_txt)
+    print(f"Packed results → {zip_name}\n")
 
 
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
