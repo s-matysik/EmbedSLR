@@ -1,7 +1,6 @@
 """
 Interactive command‑line “wizard” for EmbedSLR.
-No import from PROVIDERS – providers & models are read dynamically
-via embedslr.embeddings.list_models().
+
 """
 
 from __future__ import annotations
