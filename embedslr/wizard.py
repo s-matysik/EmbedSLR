@@ -10,11 +10,15 @@ from __future__ import annotations
 import os
 import sys
 import zipfile
+import importlib
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
 
+@@
+ 
 # ────────── helper functions (extracted from colab_app) ─────────────────
 def _env_var(provider: str) -> str | None:
     """Returns the ENV variable name for the API key of the given provider."""
@@ -24,6 +28,30 @@ def _env_var(provider: str) -> str | None:
         "jina":   "JINA_API_KEY",
         "nomic":  "NOMIC_API_KEY",
     }.get(provider.lower())
+
+
+def _ensure_sbert_installed() -> None:
+    """
+    Ensures the *sentence-transformers* library is available.
+    • If missing, prompts the user and installs it (`pip install --user sentence-transformers`).
+    • On subsequent runs, installation is skipped if already present.
+    """
+    try:
+        importlib.import_module("sentence_transformers")
+    except ModuleNotFoundError:
+        ans = _ask(
+            "📦  The 'sentence-transformers' package is not installed. Install it now? (y/N)",
+            "N",
+        ).lower()
+        if ans == "y":
+            print("⏳  Installing 'sentence-transformers'…")
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "--user", "--quiet", "sentence-transformers"]
+            )
+            print("✅  Installation complete.\n")
+        else:
+            sys.exit("❌  Cannot use the 'sbert' provider without 'sentence-transformers'.")
+
 
 
 def _models() -> Dict[str, List[str]]:
@@ -127,7 +155,6 @@ def _select_provider() -> str:
     print("📜  Available providers:", ", ".join(provs))
     return _ask("Provider", provs[0])
 
-
 def _select_model(provider: str) -> str:
     mods = _models()[provider]
     print(f"📜  Models for {provider} (first 20):")
@@ -153,6 +180,20 @@ def run(save_dir: str | os.PathLike | None = None):
     query = _ask("❓  Research query").strip()
     provider = _select_provider()
     model = _select_model(provider)
+
+  # Ensure local provider prerequisites
+    if provider.lower() == "sbert":
+        _ensure_sbert_installed()
+
+    model = _select_model(provider)
+
+    # Optional: one‑time download / verification of the local model
+    if provider.lower() == "sbert":
+        from sentence_transformers import SentenceTransformer
+        print(f"⏳  Checking/downloading model '{model}' to local cache…")
+        SentenceTransformer(model)  # after this, offline use is possible
+
+    
     n_raw = _ask("🔢  Top‑N publications for metrics (ENTER = all)")
     top_n = int(n_raw) if n_raw else None
 
