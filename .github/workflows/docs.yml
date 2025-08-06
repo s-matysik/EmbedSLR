@@ -2,7 +2,7 @@ name: Build docs
 on:
    push:
     paths:
-      - '**.py'
+       - '**.py'
       - README.md
  jobs:
   docs:
