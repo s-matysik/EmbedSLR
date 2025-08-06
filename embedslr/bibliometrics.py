@@ -1,18 +1,19 @@
 """
 Bibliometric indicators for EmbedSLR
 ====================================
-• komplet 10 wskaźników 
-• działa zarówno dla pełnego zbioru, jak i podzbioru *top‑N* publikacji
+
+• komplet 10 (+1) wskaźników A … I  
+• każdy wskaźnik jako osobna funkcja  
+• możliwość wspólnego/grupowego liczenia pełnego raportu
 """
 
 from __future__ import annotations
 
 import itertools as it
 from collections import Counter
-from typing import List, Set
+from typing import Dict, List, Set, Callable, Any
 
 import pandas as pd
-
 
 # ────────────────────────────────────────────────────────────
 # Pomocnicze funkcje
@@ -78,18 +79,14 @@ def _mutual_citation_stats(df: pd.DataFrame) -> tuple[float, int]:
 
 
 # ────────────────────────────────────────────────────────────
-# Główne API
+# Przygotowanie wspólnych statystyk (jeden przebieg po danych)
 # ────────────────────────────────────────────────────────────
-def indicators(df: pd.DataFrame) -> dict[str, float | int]:
+def _prepare_stats(df: pd.DataFrame) -> Dict[str, Any]:
     """
-    Oblicza 10 wskaźników bibliometrycznych (A … I).
-
-    Zwraca
-    -------
-    dict
-        Klucze:  A, A', B, B', C, D, E, F, G, H, I
+    Zwraca słownik z kompletem agregatów potrzebnych do liczenia wskaźników.
+    Wywoływane tylko raz przy zbiorczym liczeniu, a później przekazywane
+    poszczególnym funkcjom wskaźników.
     """
-    # ── referencje i słowa kluczowe ─────────────────────────
     refs = (
         df["Parsed_References"].tolist()
         if "Parsed_References" in df.columns
@@ -127,22 +124,125 @@ def indicators(df: pd.DataFrame) -> dict[str, float | int]:
     for kw_set in kws:
         kw_cnt.update(kw_set)
 
-    # ── cytowania wzajemne (H, I) ───────────────────────────
-    avg_mutual_cit, total_mutual_cit = _mutual_citation_stats(df)
+    # cytowania wzajemne
+    avg_mut_cit, tot_mut_cit = _mutual_citation_stats(df)
 
-    return {
-        "A":  tot_r_int / pairs,           # average shared references per pair
-        "A'": tot_r_jac / pairs,           # Jaccard of references
-        "B":  tot_k_int / pairs,           # average shared keywords per pair
-        "B'": tot_k_jac / pairs,           # Jaccard of keywords
-        "C":  pairs_with_ref,              # pairs with at least one common ref
-        "D":  len(uniq_refs),              # unique common references
-        "E":  tot_r_int,                   # sum of intersections (refs)
-        "F":  pairs_with_kw,               # pairs with at least one common kw
-        "G":  sum(c >= 2 for c in kw_cnt.values()),  # keywords appearing ≥2 times
-        "H":  avg_mutual_cit,              # *average* mutual citations per pair
-        "I":  total_mutual_cit,            # *total unique* mutual citations
-    }
+    return dict(
+        refs=refs,
+        kws=kws,
+        n=n,
+        pairs=pairs,
+        tot_r_int=tot_r_int,
+        tot_r_jac=tot_r_jac,
+        pairs_with_ref=pairs_with_ref,
+        uniq_refs=uniq_refs,
+        tot_k_int=tot_k_int,
+        tot_k_jac=tot_k_jac,
+        pairs_with_kw=pairs_with_kw,
+        kw_cnt=kw_cnt,
+        avg_mutual_cit=avg_mut_cit,
+        total_mutual_cit=tot_mut_cit,
+    )
+
+
+# ────────────────────────────────────────────────────────────
+# Funkcje pojedynczych wskaźników
+# ────────────────────────────────────────────────────────────
+def indicator_a(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> float:
+    """A – średnia liczba wspólnych referencji na parę artykułów."""
+    s = _stats or _prepare_stats(df)
+    return s["tot_r_int"] / s["pairs"]
+
+
+def indicator_a_prime(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> float:
+    """A′ – średni Jaccard (referencje) dla wszystkich par."""
+    s = _stats or _prepare_stats(df)
+    return s["tot_r_jac"] / s["pairs"]
+
+
+def indicator_b(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> float:
+    """B – średnia liczba wspólnych słów kluczowych na parę."""
+    s = _stats or _prepare_stats(df)
+    return s["tot_k_int"] / s["pairs"]
+
+
+def indicator_b_prime(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> float:
+    """B′ – średni Jaccard (słowa kluczowe) dla wszystkich par."""
+    s = _stats or _prepare_stats(df)
+    return s["tot_k_jac"] / s["pairs"]
+
+
+def indicator_c(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
+    """C – liczba par z co najmniej jedną wspólną referencją."""
+    s = _stats or _prepare_stats(df)
+    return s["pairs_with_ref"]
+
+
+def indicator_d(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
+    """D – liczba unikatowych referencji współdzielonych przez ≥2 artykuły."""
+    s = _stats or _prepare_stats(df)
+    return len(s["uniq_refs"])
+
+
+def indicator_e(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
+    """E – łączna liczba przecięć (referencje) dla wszystkich par."""
+    s = _stats or _prepare_stats(df)
+    return s["tot_r_int"]
+
+
+def indicator_f(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
+    """F – liczba par z ≥1 wspólnym słowem kluczowym."""
+    s = _stats or _prepare_stats(df)
+    return s["pairs_with_kw"]
+
+
+def indicator_g(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
+    """G – liczba słów kluczowych występujących w ≥2 artykułach."""
+    s = _stats or _prepare_stats(df)
+    return sum(c >= 2 for c in s["kw_cnt"].values())
+
+
+def indicator_h(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> float:
+    """H – średnia liczba wspólnie cytowanych artykułów na parę."""
+    s = _stats or _prepare_stats(df)
+    return s["avg_mutual_cit"]
+
+
+def indicator_i(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
+    """I – łączna liczba *unikatowych* artykułów cytowanych wzajemnie."""
+    s = _stats or _prepare_stats(df)
+    return s["total_mutual_cit"]
+
+
+# mapa nazw → funkcji (łatwe rozszerzanie i iterowanie)
+_INDICATOR_FUNCS: Dict[str, Callable[[pd.DataFrame, Any], float | int]] = {
+    "A":  indicator_a,
+    "A'": indicator_a_prime,
+    "B":  indicator_b,
+    "B'": indicator_b_prime,
+    "C":  indicator_c,
+    "D":  indicator_d,
+    "E":  indicator_e,
+    "F":  indicator_f,
+    "G":  indicator_g,
+    "H":  indicator_h,
+    "I":  indicator_i,
+}
+
+# ────────────────────────────────────────────────────────────
+# Główne API
+# ────────────────────────────────────────────────────────────
+def indicators(df: pd.DataFrame) -> dict[str, float | int]:
+    """
+    Oblicza komplet wskaźników bibliometrycznych (A … I).
+
+    Zwraca
+    -------
+    dict
+        Klucze:  A, A', B, B', C, D, E, F, G, H, I
+    """
+    stats = _prepare_stats(df)
+    return {name: fn(df, _stats=stats) for name, fn in _INDICATOR_FUNCS.items()}
 
 
 def full_report(
@@ -192,7 +292,7 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 2:
-        sys.exit("Usage: python metrics.py <scopus_export.csv> [topN]")
+        sys.exit("Usage: python bibliometric.py <scopus_export.csv> [topN]")
     csv = sys.argv[1]
     topn = int(sys.argv[2]) if len(sys.argv) > 2 else None
     df_  = pd.read_csv(csv)
