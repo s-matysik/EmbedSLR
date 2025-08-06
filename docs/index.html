@@ -1,163 +1,146 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>EmbedSLR – Kompleksowa dokumentacja</title>
+<title>EmbedSLR – Comprehensive Documentation</title>
 <style>
-/* ─── Estetyka i użyteczność ────────────────────────────────────────── */
+/* ─── basic styling ───────────────────────────────────────── */
 body{font-family:Arial,Helvetica,sans-serif;max-width:950px;margin:auto;padding:2.2rem;line-height:1.55}
 h1,h2,h3{border-bottom:1px solid #e0e0e0;padding-bottom:.2rem;margin-top:2.2rem}
-code,pre{font-family: Consolas,Monaco,monospace}
+code,pre{font-family:Consolas,Monaco,monospace}
 pre{background:#fafafa;border:1px solid #ddd;padding:1rem;border-radius:5px;overflow-x:auto}
 kbd{background:#eee;border:1px solid #ccc;border-radius:3px;padding:2px 4px;font-size:90%}
-table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:.4rem}
-th{background:#f5f5f5}
+table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:.4rem}th{background:#f5f5f5}
 </style>
 </head>
 <body>
 
-<h1>EmbedSLR 🚀 &nbsp;<small>Deterministyczny screening publikacji &amp; audyt bibliometryczny</small></h1>
+<h1>EmbedSLR 🚀 <small>Deterministic publication screening &amp; bibliometric auditing</small></h1>
 
-<p><strong>EmbedSLR</strong> to zwięzły framework w Pythonie, który łączy <em>embedding‑based ranking</em> z automatycznym audytem bibliometrycznym, aby radykalnie skrócić fazę selekcji w systematycznych przeglądach literatury (<abbr title="Systematic Literature Review">SLR</abbr>).</p>
+<p><strong>EmbedSLR</strong> is a compact Python framework that combines <em>embedding‑based ranking</em> with an automatic bibliometric audit to accelerate the screening phase in systematic literature reviews (SLR).</p>
 
 <ul>
-  <li>W pełni <strong>deterministyczny</strong> – brak losowych komponentów LLM</li>
-  <li>5 wymiennych backendów embeddingów: lokalny SBERT, OpenAI, Cohere, Jina, Nomic</li>
-  <li>Dwa tryby „<strong>zero config</strong>”: interaktywny <em>Wizard</em> w terminalu oraz <em>Google Colab GUI</em></li>
-  <li>Generuje gotowy do udostępnienia raport: <code>biblio_report.txt</code></li>
+  <li>Fully <strong>deterministic</strong> – no stochastic LLM components</li>
+  <li>Five interchangeable embedding back‑ends: local SBERT, OpenAI, Cohere, Jina, Nomic</li>
+  <li>Two “<strong>zero‑config</strong>” entry points: an interactive <em>Terminal Wizard</em> and a <em>Google Colab GUI</em></li>
+  <li>Creates a share‑ready dashboard: <code>biblio_report.txt</code></li>
 </ul>
 
 
-<h2>1. Instalacja</h2>
+<h2>1&nbsp;&nbsp;Installation</h2>
 
-<h3>1.1 Z PyPI (najłatwiej)</h3>
-<pre><code>pip install embedslr</code></pre>
-
-<h3>1.2 Z GitHuba (wersja dev)</h3>
+<h3>1.1 From GitHub (development version)</h3>
 <pre><code>pip install git+https://github.com/s-matysik/EmbedSLR_.git</code></pre>
 
-<p>Alternatywnie możesz sklonować repozytorium i pracować w trybie editable:</p>
+<p>Alternatively, clone the repository and work in editable mode:</p>
 <pre><code>git clone https://github.com/s-matysik/EmbedSLR_.git
 cd EmbedSLR_
 pip install -e .       # editable install
 </code></pre>
 
 
-<h2>2. Szybki start</h2>
+<h2>2&nbsp;&nbsp;Quick start</h2>
 
-<h3>2.1 Google Colab GUI 🟢 (polecane dla początkujących)</h3>
+<h3>2.1&nbsp;Google Colab GUI&nbsp;🟢 (recommended for first‑time users)</h3>
 <pre><code class="language-python">!pip install git+https://github.com/s-matysik/EmbedSLR_.git
 from embedslr.colab_app import run
-run()         # automatycznie wyświetli graficzny widżet</code></pre>
+run()   # launches an interactive widget</code></pre>
 
-<h3>2.2 Terminal Wizard ⚡ (offline friendly)</h3>
+<h3>2.2&nbsp;Terminal Wizard&nbsp;⚡ (offline‑friendly)</h3>
 <ol>
-  <li>Przygotuj eksport z Scopusa / WoS w formie CSV.</li>
-  <li>Uruchom:
+  <li>Export your Scopus / Web of Science search results to <code>CSV</code>.</li>
+  <li>Run:
   <pre><code>python -m embedslr.wizard</code></pre></li>
-  <li>Podaj ścieżkę do CSV, zapytanie badawcze i wybierz provider/model.</li>
-  <li>Odbierz ZIP (ranking, top‑<em>N</em>, raport bibliometryczny).</li>
+  <li>Provide the CSV path, research query and choose provider/model.</li>
+  <li>Receive a ZIP archive (<code>ranking.csv</code>, optional <code>topN.csv</code>, <code>biblio_report.txt</code>).</li>
 </ol>
 
-<h3>2.3 Minimalny skrypt Pythona</h3>
-<pre><code class="language-python">from embedslr import io, embeddings, similarity
 
-df = io.load_csv("scopus_export.csv")       # wczytaj i auto‑wykryj kolumny
-df["txt"] = io.combine_title_abstract(df)   # tekst do embedowania
-vecs = embeddings.get_embeddings(df["txt"]) # domyślnie: SBERT mini‑LM
-qvec = embeddings.get_embeddings(["Does CSR influence consumer behaviour?"])[0]
-ranked = similarity.rank_by_cosine(qvec, vecs, df)
-ranked.head(20).to_csv("ranking.csv", index=False)</code></pre>
-
-
-<h2>3. Lokalny SBERT &nbsp;<small>(automatyczne pobieranie + 100 % offline)</small></h2>
-
-<p>Jeśli wybierzesz providera <kbd>sbert</kbd>, w grę wchodzi specjalna obsługa:</p>
+<h2>3&nbsp;&nbsp;Local SBERT (automatic download &amp; 100 % offline afterwards)</h2>
 
 <table>
-<thead><tr><th>Fragment kodu</th><th>Funkcja</th></tr></thead>
+<thead><tr><th>Code fragment</th><th>Purpose</th></tr></thead>
 <tbody>
-<tr><td><code>_ensure_sbert_installed()</code></td><td>Sprawdza dostępność biblioteki <code>sentence‑transformers</code>; w razie braku pyta i instaluje (<kbd>pip install --user …</kbd>).</td></tr>
-<tr><td><code>_local_model_dir()</code></td><td>Wyznacza katalog <code>embedslr/sbert_models/&lt;model&gt;</code> na stałe przechowywanie modeli.</td></tr>
-<tr><td><code>_get_or_download_local_sbert()</code></td><td>Pobiera model tylko przy pierwszym uruchomieniu i zapisuje lokalnie; ustawia <code>HF_HUB_OFFLINE=1</code>, aby kolejne starty działały bez internetu.</td></tr>
-<tr><td><code>_select_model()</code></td><td>Model wpisujesz tylko raz – koniec z podwójnym promptem.</td></tr>
+<tr><td><code>_ensure_sbert_installed()</code></td><td>Checks for <code>sentence‑transformers</code>; if missing, prompts and installs it</td></tr>
+<tr><td><code>_local_model_dir()</code></td><td>Resolves permanent path <code>embedslr/sbert_models/&lt;model&gt;</code></td></tr>
+<tr><td><code>_get_or_download_local_sbert()</code></td><td>Downloads the model on first run, sets <code>HF_HUB_OFFLINE=1</code> for subsequent offline use</td></tr>
+<tr><td><code>_select_model()</code></td><td>You enter the model only once – no duplicate prompts</td></tr>
 </tbody>
 </table>
 
-<p>Efekt: <strong>od drugiego uruchomienia pracujesz całkowicie offline</strong>, nawet w środowiskach bez dostępu do internetu czy w zamkniętych sieciach.</p>
+<p><em>Result:</em> from the second launch onward, EmbedSLR runs entirely offline even in closed networks.</p>
 
 
-<h2>4. Bibliometric indicators (A … I)</h2>
+<h2>4&nbsp;&nbsp;Bibliometric indicators (A … I)</h2>
 
-<p>EmbedSLR oblicza 10 (+1) wskaźników, które mierzą spójność tematyczną i cytowania wewnętrzne w korpusie publikacji. Wszystkie implementacje znajdziesz w pliku <code>embedslr/bibliometrics.py</code>.</p>
+<p>EmbedSLR computes 10 (+1) indicators that quantify topical coherence and internal citation patterns in a publication corpus. All functions are implemented in <code>embedslr/bibliometrics.py</code>.</p>
 
 <table>
-<thead><tr><th>Symbol</th><th>Opis</th><th>Funkcja</th></tr></thead>
+<thead><tr><th>Symbol</th><th>Description</th><th>Function</th></tr></thead>
 <tbody>
-<tr><td>A</td><td>Średnia liczba wspólnych referencji na parę artykułów</td><td><code>indicator_a(df)</code></td></tr>
-<tr><td>A′</td><td>Średni indeks Jaccarda (referencje)</td><td><code>indicator_a_prime(df)</code></td></tr>
-<tr><td>B</td><td>Średnia liczba wspólnych słów kluczowych na parę</td><td><code>indicator_b(df)</code></td></tr>
-<tr><td>B′</td><td>Średni Jaccard (słowa kluczowe)</td><td><code>indicator_b_prime(df)</code></td></tr>
-<tr><td>C</td><td>Liczba par z ≥1 wspólną referencją</td><td><code>indicator_c(df)</code></td></tr>
-<tr><td>D</td><td>L. unikatowych referencji współdzielonych przez ≥2 artykuły</td><td><code>indicator_d(df)</code></td></tr>
-<tr><td>E</td><td>Suma wszystkich przecięć referencji</td><td><code>indicator_e(df)</code></td></tr>
-<tr><td>F</td><td>Liczba par z ≥1 wspólnym słowem kluczowym</td><td><code>indicator_f(df)</code></td></tr>
-<tr><td>G</td><td>Liczba słów kluczowych występujących w ≥2 artykułach</td><td><code>indicator_g(df)</code></td></tr>
-<tr><td>H</td><td>Średnia liczba wspólnie cytowanych artykułów na parę</td><td><code>indicator_h(df)</code></td></tr>
-<tr><td>I</td><td>Łączna liczba unikatowych artykułów cytowanych wzajemnie</td><td><code>indicator_i(df)</code></td></tr>
+<tr><td>A</td><td>Average number of shared references per pair of papers</td><td><code>indicator_a(df)</code></td></tr>
+<tr><td>A′</td><td>Mean Jaccard (references) across all pairs</td><td><code>indicator_a_prime(df)</code></td></tr>
+<tr><td>B</td><td>Average number of shared keywords per pair</td><td><code>indicator_b(df)</code></td></tr>
+<tr><td>B′</td><td>Mean Jaccard (keywords) across all pairs</td><td><code>indicator_b_prime(df)</code></td></tr>
+<tr><td>C</td><td>Pairs with ≥1 common reference</td><td><code>indicator_c(df)</code></td></tr>
+<tr><td>D</td><td>Unique references shared by ≥2 papers</td><td><code>indicator_d(df)</code></td></tr>
+<tr><td>E</td><td>Total intersections of references across all pairs</td><td><code>indicator_e(df)</code></td></tr>
+<tr><td>F</td><td>Pairs with ≥1 common keyword</td><td><code>indicator_f(df)</code></td></tr>
+<tr><td>G</td><td>Keywords occurring in ≥2 papers</td><td><code>indicator_g(df)</code></td></tr>
+<tr><td>H</td><td>Average number of mutually cited papers per pair</td><td><code>indicator_h(df)</code></td></tr>
+<tr><td>I</td><td>Total unique mutually cited papers</td><td><code>indicator_i(df)</code></td></tr>
 </tbody>
 </table>
 
-<h3>4.1 Pełny raport w jednym wywołaniu</h3>
+<h3>4.1 Full report with one call</h3>
 <pre><code class="language-python">from embedslr.bibliometrics import full_report
 full_report(ranked_df, path="biblio_report.txt", top_n=30)</code></pre>
 
-<h3>4.2 Wyliczenie pojedynczego wskaźnika</h3>
+<h3>4.2 Single indicator example</h3>
 <pre><code class="language-python">from embedslr.bibliometrics import indicator_b_prime
-val = indicator_b_prime(ranked_df)     # float
-print("Średni Jaccard (kws):", val)</code></pre>
+print("Mean Jaccard (keywords):", indicator_b_prime(ranked_df))</code></pre>
 
 
-<h2>5. Struktura repozytorium</h2>
+<h2>5&nbsp;&nbsp;Repository structure</h2>
 
 <pre>
-embedslr/                 # moduł główny
-├── io.py                 # wczytywanie CSV/RIS, detekcja kolumn, łączenie tytułu+abstraktu
-├── embeddings.py         # 5 providerów modeli + interfejs get_embeddings()
-├── similarity.py         # ranking wg cosine similarity
-├── bibliometrics.py      # wskaźniki A…I + pełny raport
-├── wizard.py             # interaktywny terminalowy asystent (pipeline offline)
-├── cli.py                # Thin wrapper dla typers‑CLI (rank, metrics, wizard)
-├── colab_app.py          # widżet Google Colab (GUI)
-├── utils.py              # logowanie, seed fix, mierzenie czasu
-├── _version.py           # numer wersji z git‑tagu
-└── __init__.py           # eksport publicznego API
-docs/                     # (Sphinx/pdoc) dokumentacja – zastąp tym plikiem
-examples/                 # notatniki i skrypty z artykułu/README
-pyproject.toml            # manifest: metadata, zależności runtime, minimal‑backend
-setup.cfg                 # dopasowania flake8 + deklaracja py.typed
-MANIFEST.in               # pliki nie‑Python dołączane do sdist (docs, *.ipynb)
-LICENSE                   # licencja MIT
-README.md                 # front repo – skrócony opis + quick start
-.gitignore                # wykluczenia (build, __pycache__, *.ipynb_checkpoints)
+embedslr/                 # main package
+├── io.py                 # load CSV/RIS, column detection, title+abstract merge
+├── embeddings.py         # five providers + get_embeddings()
+├── similarity.py         # cosine ranking
+├── bibliometrics.py      # indicators A … I + full report
+├── wizard.py             # interactive terminal assistant (offline pipeline)
+├── cli.py                # Typer CLI: rank, metrics, wizard
+├── colab_app.py          # Google Colab widget
+├── utils.py              # logging, timing, seeds
+├── _version.py           # version number
+└── __init__.py           # public API exports
+docs/                     # (Sphinx/pdoc) documentation – replace with this file
+examples/                 # Jupyter notebooks and article assets
+pyproject.toml            # manifest: metadata, runtime deps, build backend
+setup.cfg                 # flake8 tweaks + py.typed
+MANIFEST.in               # non‑Python files included in sdist
+LICENSE                   # MIT licence
+README.md                 # repo front page – quick overview
+.gitignore                # build artefacts, __pycache__, *.ipynb_checkpoints
 </pre>
 
 
-<h2>6. Szczegóły plików *.py*</h2>
+<h2>6&nbsp;&nbsp;File highlights</h2>
 
 <ul>
-  <li><strong>io.py</strong> – funkcje <code>load_csv()</code>, <code>load_ris()</code>, <code>autodetect_columns()</code>, <code>combine_title_abstract()</code>.</li>
-  <li><strong>embeddings.py</strong> – klasy providerów (<em>SbertProvider</em>, <em>OpenAIProvider</em> itd.) + <code>list_models()</code> i <code>get_embeddings()</code>.</li>
-  <li><strong>similarity.py</strong> – <code>rank_by_cosine(query_vec, doc_vecs, df)</code>; zwraca <em>DataFrame</em> posortowany rosnąco po odległości.</li>
-  <li><strong>bibliometrics.py</strong> – funkcje wskaźników, <code>indicators()</code>, <code>full_report()</code>; optymalizacja: <em>_prepare_stats</em> wyliczany raz.</li>
-  <li><strong>wizard.py</strong> – pipeline <em>end‑to‑end</em>: CSV &rarr; embeddings &rarr; ranking &rarr; raport &rarr; ZIP; obsługa SBERT offline.</li>
-  <li><strong>cli.py</strong> – Typer CLI: <kbd>embedslr rank</kbd>, <kbd>embedslr metrics</kbd>, <kbd>embedslr wizard</kbd>.</li>
-  <li><strong>colab_app.py</strong> – <code>run()</code> buduje widżet <code>ipywidgets</code>; idealny dla dydaktyki / publikacji.</li>
-  <li><strong>utils.py</strong> – jednolite logi (<code>log()</code>), <code>set_seed()</code>, kontekst <code>timed()</code>.</li>
+  <li><strong>io.py</strong> – <code>load_csv()</code>, <code>load_ris()</code>, column auto‑detection, <code>combine_title_abstract()</code></li>
+  <li><strong>embeddings.py</strong> – provider classes (SbertProvider, OpenAIProvider, …), <code>list_models()</code>, <code>get_embeddings()</code></li>
+  <li><strong>similarity.py</strong> – <code>rank_by_cosine()</code> returns a sorted DataFrame</li>
+  <li><strong>bibliometrics.py</strong> – indicator functions, <code>indicators()</code>, <code>full_report()</code></li>
+  <li><strong>wizard.py</strong> – end‑to‑end pipeline with SBERT offline logic</li>
+  <li><strong>cli.py</strong> – Typer commands <kbd>embedslr rank</kbd>, <kbd>embedslr metrics</kbd>, <kbd>embedslr wizard</kbd></li>
+  <li><strong>colab_app.py</strong> – <code>run()</code> builds the ipywidgets GUI</li>
+  <li><strong>utils.py</strong> – unified logging (<code>log()</code>), <code>timed()</code>, <code>set_seed()</code></li>
 </ul>
 
 
-<h2>7. Citing</h2>
+<h2>7&nbsp;&nbsp;Citing EmbedSLR</h2>
 
 <pre><code class="language-bibtex">@misc{matysik2025embedslr,
   title  = {EmbedSLR – deterministic embedding‑based screening and bibliometric validation in SLR},
@@ -167,20 +150,20 @@ README.md                 # front repo – skrócony opis + quick start
 }</code></pre>
 
 
-<h2>8. FAQ</h2>
+<h2>8&nbsp;&nbsp;FAQ</h2>
 
 <details>
-  <summary><strong>❓ Nie mam klucza API – czy mogę używać EmbedSLR?</strong></summary>
-  <p>Tak, wybierz providera <kbd>sbert</kbd>. Model SBERT zostanie pobrany jednorazowo z HF Hub i potem działa całkowicie offline.</p>
+  <summary><strong>❓ I have no API key. Can I still use EmbedSLR?</strong></summary>
+  <p>Yes. Choose the <kbd>sbert</kbd> provider. The model is downloaded once from HF Hub and then works fully offline.</p>
 </details>
 
 <details>
-  <summary><strong>❓ Jak zmienić domyślną liczbę dokumentów <em>Top‑N</em>?</strong></summary>
-  <p>W terminalu podaj żądaną liczbę w kroku <kbd>🔢 Top‑N publications for metrics</kbd>. W API ustaw parametr <code>top_n</code> w <code>full_report()</code>.</p>
+  <summary><strong>❓ How do I change the default Top‑N for the metrics?</strong></summary>
+  <p>In the wizard, enter the desired number when prompted <kbd>🔢 Top‑N publications for metrics</kbd>. In the API, pass <code>top_n</code> to <code>full_report()</code>.</p>
 </details>
 
 
-<p style="margin-top:3rem;font-size:90%;color:#555">Dokument wygenerowano automatycznie — ostatnia aktualizacja: <time datetime="2025-08-06">06 sie 2025</time>.</p>
+<p style="margin-top:3rem;font-size:90%;color:#555">This page was generated automatically – last update: <time datetime="2025-08-06">06&nbsp;Aug&nbsp;2025</time>.</p>
 
 </body>
 </html>
