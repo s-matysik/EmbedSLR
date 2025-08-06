@@ -1,0 +1,22 @@
+name: Build docs
+on:
+  push:
+    paths:
+      - '**.py'
+      - README.md
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install pdoc
+      - run: pdoc embedslr --html --output-dir docs --force
+      - run: cp docs/embedslr/index.html docs/index.html
+      - uses: EndBug/add-and-commit@v9
+        with:
+          author_name: github-actions
+          author_email: github-actions@github.com
+          message: 'Auto‑update API docs'
