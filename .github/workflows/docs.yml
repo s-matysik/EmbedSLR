@@ -1,6 +1,6 @@
 name: Build docs
 on:
-  push:
+   push:
     paths:
       - '**.py'
       - README.md
