@@ -1,9 +1,7 @@
 """
 Bibliometric indicators for EmbedSLR
 ====================================
-
-• implementuje komplet 10 wskaźników (A … I) opisanych w dokumentacji  
-• naprawia liczenie cytowań wzajemnych (H – średnia, I – liczba unikatowych)  
+• komplet 10 wskaźników 
 • działa zarówno dla pełnego zbioru, jak i podzbioru *top‑N* publikacji
 """
 
