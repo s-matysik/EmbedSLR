@@ -4,7 +4,7 @@ on:
     paths:
       - '**.py'
       - README.md
-jobs:
+ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
