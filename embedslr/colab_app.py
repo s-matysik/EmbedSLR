@@ -9,7 +9,7 @@ from IPython.display import HTML, clear_output, display
 IN_COLAB = "google.colab" in sys.modules
 
 
-# ───────── helpers ─────────────────────────────────────────────────────────
+# helpers
 def _env_var(p: str) -> str | None:
     return {"openai": "OPENAI_API_KEY", "cohere": "COHERE_API_KEY",
             "jina": "JINA_API_KEY", "nomic": "NOMIC_API_KEY"}.get(p.lower())
@@ -78,7 +78,7 @@ def _pipeline(df: pd.DataFrame, query: str, provider: str, model: str,
     return zf
 
 
-# ───────── interactive Colab ───────────────────────────────────────────────
+# interactive Colab
 def _colab_ui(out_dir: Path):
     from google.colab import files  # type: ignore
 
@@ -120,7 +120,7 @@ def _colab_ui(out_dir: Path):
     files.download(str(dst))
 
 
-# ───────── CLI fallback ────────────────────────────────────────────────────
+# CLI fallback
 def _cli(out_dir: Path):
     print("== EmbedSLR CLI ==")
     csv_p = Path(input("CSV path: ").strip())
@@ -137,7 +137,7 @@ def _cli(out_dir: Path):
     print("ZIP saved:", z)
 
 
-# ───────── public ─────────────────────────────────────────────────────────
+# public
 def run(save_dir: str | os.PathLike | None = None):
     save_dir = Path(save_dir or tempfile.mkdtemp(prefix="embedslr_"))
     clear_output()
