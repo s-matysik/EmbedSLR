@@ -18,7 +18,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 
-# ────────── helper functions (extracted from colab_app) ─────────────────
+# ────────── helper functions  ─────────────────
 def _env_var(provider: str) -> str | None:
     """Returns the ENV variable name for the API key of the given provider."""
     return {
