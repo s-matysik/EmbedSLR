@@ -16,6 +16,6 @@ This process can be replicated, and the results independently verified, when tes
 ## Installation Google Colab 
 
 ```bash
-!pip install git+https://github.com/s-matysik/EmbedSLR_.git
+!pip install git+https://github.com/s-matysik/EmbedSLR.git
 from embedslr.colab_app import run
 run()
