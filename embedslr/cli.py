@@ -10,7 +10,7 @@ from .bibliometrics import full_report
 
 def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="embedslr", description="SLR screening toolkit")
-    ap.add_argument("-i", "--input", required=True, help="CSV file exported from Scopus/WoS")
+    ap.add_argument("-i", "--input", required=True, help="CSV file exported from Scopus")
     ap.add_argument("-q", "--query", required=True, help="Research problem / query string")
     ap.add_argument("-p", "--provider", default="sbert",
                     choices=["sbert", "openai", "cohere", "nomic", "jina"])
