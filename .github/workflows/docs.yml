@@ -1,22 +1,41 @@
 name: Build docs
+
 on:
-   push:
+  push:
+    branches: [main]
     paths:
-       - '**.py'
+      - '**/*.py'
       - README.md
- jobs:
+
+permissions:
+  contents: write
+
+jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-      - run: pip install pdoc
-      - run: pdoc embedslr --html --output-dir docs --force
-      - run: cp docs/embedslr/index.html docs/index.html
-      - uses: EndBug/add-and-commit@v9
+          python-version: '3.9'
+
+      # Zainstaluj pakiet wraz z zależnościami wymaganymi do importu
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install . 
+          pip install pdoc
+
+      - name: Build API docs with pdoc
+        run: |
+          pdoc embedslr --html --output-dir docs --force
+          cp docs/embedslr/index.html docs/index.html
+
+      - name: Commit and push docs
+        uses: EndBug/add-and-commit@v9
         with:
+          add: docs/*
           author_name: github-actions
-          author_email: github-actions@github.com
-          message: 'Auto‑update API docs'
+          author_email: sebastian.matysik@usz.edu.pl
+          message: 'Auto-update API docs'
