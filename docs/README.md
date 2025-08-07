@@ -16,7 +16,7 @@
 ## ✨ Quick start (Google Colab)
 
 ```bash
-!pip install git+https://github.com/s-matysik/EmbedSLR_.git
+!pip install git+https://github.com/s-matysik/EmbedSLR.git
 from embedslr.colab_app import run
 run()
 
@@ -31,5 +31,5 @@ If you use **EmbedSLR** in scientific work, please cite us:
   title   = {EmbedSLR – an open Python framework for deterministic embedding‑based screening and bibliometric validation in systematic literature reviews},
   author  = {Matysik, S., Wiśniewska, J., Frankowski, P.K.},
   year    = {2025},
-  url     = {https://github.com/s-matysik/EmbedSLR_/}
+  url     = {https://github.com/s-matysik/EmbedSLR/}
 }
