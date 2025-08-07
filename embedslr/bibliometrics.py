@@ -2,9 +2,9 @@
 Bibliometric indicators for EmbedSLR
 ====================================
 
-• komplet 10 (+1) wskaźników A … I  
-• każdy wskaźnik jako osobna funkcja  
-• możliwość wspólnego/grupowego liczenia pełnego raportu
+• complete set of 10 (+1) indicators A … I  
+• each indicator as a separate function  
+• ability to jointly/group calculate the full report
 """
 
 from __future__ import annotations
@@ -16,10 +16,10 @@ from typing import Dict, List, Set, Callable, Any
 import pandas as pd
 
 # ────────────────────────────────────────────────────────────
-# Pomocnicze funkcje
+# Helper functions
 # ────────────────────────────────────────────────────────────
 def _kw_sets(series: pd.Series) -> List[Set[str]]:
-    """Zamienia kolumnę *Author Keywords* na listę zbiorów (lower‑case)."""
+    """Converts the *Author Keywords* column into a list of sets (lower-case)."""
     return [
         {w.strip().lower() for w in str(x).split(";") if w.strip()}
         for x in series.fillna("")
@@ -28,15 +28,15 @@ def _kw_sets(series: pd.Series) -> List[Set[str]]:
 
 def _cited_sets(df: pd.DataFrame) -> List[Set[int]]:
     """
-    Dla każdego artykułu zwraca zbiór indeksów *innych* artykułów z datasetu,
-    których tytuł występuje w jego referencjach.
+    For each article, returns a set of indexes of *other* articles from the dataset
+    whose title appears in its references.
     """
     if {"Title", "Parsed_References"} - set(df.columns):
-        # brak wymaganych kolumn
+        # missing required columns
         return [set() for _ in range(len(df))]
 
     titles = df["Title"].fillna("").str.lower().str.strip().tolist()
-    refs   = df["Parsed_References"].tolist()          # lista setów/zbiorów stringów
+    refs   = df["Parsed_References"].tolist()          # list of sets of strings
 
     cited: List[Set[int]] = []
     for i, ref_set in enumerate(refs):
@@ -54,10 +54,10 @@ def _cited_sets(df: pd.DataFrame) -> List[Set[int]]:
 
 def _mutual_citation_stats(df: pd.DataFrame) -> tuple[float, int]:
     """
-    Zwraca:
-        • średnią liczbę wspólnych cytowanych artykułów na parę (H)
-        • łączną liczbę *unikatowych* artykułów z datasetu,
-          które zostały choć raz zacytowane (I)
+    Returns:
+        • average number of shared cited articles per pair (H)
+        • total number of *unique* articles from the dataset
+          that were cited at least once (I)
     """
     cited_sets = _cited_sets(df)
     n          = len(cited_sets)
@@ -79,13 +79,13 @@ def _mutual_citation_stats(df: pd.DataFrame) -> tuple[float, int]:
 
 
 # ────────────────────────────────────────────────────────────
-# Przygotowanie wspólnych statystyk (jeden przebieg po danych)
+# Preparing shared statistics (single pass through the data)
 # ────────────────────────────────────────────────────────────
 def _prepare_stats(df: pd.DataFrame) -> Dict[str, Any]:
     """
-    Zwraca słownik z kompletem agregatów potrzebnych do liczenia wskaźników.
-    Wywoływane tylko raz przy zbiorczym liczeniu, a później przekazywane
-    poszczególnym funkcjom wskaźników.
+    Returns a dictionary with a complete set of aggregates needed to calculate indicators.
+    Called only once during bulk calculation, then passed
+    to individual indicator functions.
     """
     refs = (
         df["Parsed_References"].tolist()
@@ -96,7 +96,7 @@ def _prepare_stats(df: pd.DataFrame) -> Dict[str, Any]:
     n       = len(df)
     pairs   = n * (n - 1) / 2 or 1
 
-    # agregaty
+    # aggregates
     tot_r_int = tot_r_jac = pairs_with_ref = 0
     uniq_refs: Set[str] = set()
     tot_k_int = tot_k_jac = pairs_with_kw = 0
@@ -108,14 +108,14 @@ def _prepare_stats(df: pd.DataFrame) -> Dict[str, Any]:
         inter_k = kws[i] & kws[j]
         union_k = kws[i] | kws[j]
 
-        # referencje
+        # references
         tot_r_int += len(inter_r)
         tot_r_jac += len(inter_r) / len(union_r) if union_r else 0.0
         if inter_r:
             pairs_with_ref += 1
             uniq_refs.update(inter_r)
 
-        # słowa kluczowe
+        # keywords
         tot_k_int += len(inter_k)
         tot_k_jac += len(inter_k) / len(union_k) if union_k else 0.0
         if inter_k:
@@ -124,7 +124,7 @@ def _prepare_stats(df: pd.DataFrame) -> Dict[str, Any]:
     for kw_set in kws:
         kw_cnt.update(kw_set)
 
-    # cytowania wzajemne
+    # mutual citations
     avg_mut_cit, tot_mut_cit = _mutual_citation_stats(df)
 
     return dict(
@@ -146,75 +146,75 @@ def _prepare_stats(df: pd.DataFrame) -> Dict[str, Any]:
 
 
 # ────────────────────────────────────────────────────────────
-# Funkcje pojedynczych wskaźników
+# Functions for individual indicators
 # ────────────────────────────────────────────────────────────
 def indicator_a(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> float:
-    """A – średnia liczba wspólnych referencji na parę artykułów."""
+    """A – average number of shared references per article pair."""
     s = _stats or _prepare_stats(df)
     return s["tot_r_int"] / s["pairs"]
 
 
 def indicator_a_prime(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> float:
-    """A′ – średni Jaccard (referencje) dla wszystkich par."""
+    """A′ – average Jaccard (references) for all pairs."""
     s = _stats or _prepare_stats(df)
     return s["tot_r_jac"] / s["pairs"]
 
 
 def indicator_b(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> float:
-    """B – średnia liczba wspólnych słów kluczowych na parę."""
+    """B – average number of shared keywords per pair."""
     s = _stats or _prepare_stats(df)
     return s["tot_k_int"] / s["pairs"]
 
 
 def indicator_b_prime(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> float:
-    """B′ – średni Jaccard (słowa kluczowe) dla wszystkich par."""
+    """B′ – average Jaccard (keywords) for all pairs."""
     s = _stats or _prepare_stats(df)
     return s["tot_k_jac"] / s["pairs"]
 
 
 def indicator_c(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
-    """C – liczba par z co najmniej jedną wspólną referencją."""
+    """C – number of pairs with at least one shared reference."""
     s = _stats or _prepare_stats(df)
     return s["pairs_with_ref"]
 
 
 def indicator_d(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
-    """D – liczba unikatowych referencji współdzielonych przez ≥2 artykuły."""
+    """D – number of unique references shared by ≥2 articles."""
     s = _stats or _prepare_stats(df)
     return len(s["uniq_refs"])
 
 
 def indicator_e(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
-    """E – łączna liczba przecięć (referencje) dla wszystkich par."""
+    """E – total number of intersections (references) for all pairs."""
     s = _stats or _prepare_stats(df)
     return s["tot_r_int"]
 
 
 def indicator_f(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
-    """F – liczba par z ≥1 wspólnym słowem kluczowym."""
+    """F – number of pairs with ≥1 shared keyword."""
     s = _stats or _prepare_stats(df)
     return s["pairs_with_kw"]
 
 
 def indicator_g(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
-    """G – liczba słów kluczowych występujących w ≥2 artykułach."""
+    """G – number of keywords appearing in ≥2 articles."""
     s = _stats or _prepare_stats(df)
     return sum(c >= 2 for c in s["kw_cnt"].values())
 
 
 def indicator_h(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> float:
-    """H – średnia liczba wspólnie cytowanych artykułów na parę."""
+    """H – average number of jointly cited articles per pair."""
     s = _stats or _prepare_stats(df)
     return s["avg_mutual_cit"]
 
 
 def indicator_i(df: pd.DataFrame, *, _stats: Dict[str, Any] | None = None) -> int:
-    """I – łączna liczba *unikatowych* artykułów cytowanych wzajemnie."""
+    """I – total number of *unique* mutually cited articles."""
     s = _stats or _prepare_stats(df)
     return s["total_mutual_cit"]
 
 
-# mapa nazw → funkcji (łatwe rozszerzanie i iterowanie)
+# map of names → functions (easy extension and iteration)
 _INDICATOR_FUNCS: Dict[str, Callable[[pd.DataFrame, Any], float | int]] = {
     "A":  indicator_a,
     "A'": indicator_a_prime,
@@ -230,16 +230,16 @@ _INDICATOR_FUNCS: Dict[str, Callable[[pd.DataFrame, Any], float | int]] = {
 }
 
 # ────────────────────────────────────────────────────────────
-# Główne API
+# Main API
 # ────────────────────────────────────────────────────────────
 def indicators(df: pd.DataFrame) -> dict[str, float | int]:
     """
-    Oblicza komplet wskaźników bibliometrycznych (A … I).
+    Calculates the complete set of bibliometric indicators (A … I).
 
-    Zwraca
+    Returns
     -------
     dict
-        Klucze:  A, A', B, B', C, D, E, F, G, H, I
+        Keys:  A, A', B, B', C, D, E, F, G, H, I
     """
     stats = _prepare_stats(df)
     return {name: fn(df, _stats=stats) for name, fn in _INDICATOR_FUNCS.items()}
@@ -252,7 +252,7 @@ def full_report(
     top_n: int | None = None,
 ) -> str:
     """
-    Generuje sformatowany raport tekstowy (i opcjonalnie zapisuje do *path*).
+    Generates a formatted text report (and optionally saves it to *path*).
     """
     sub = df.head(top_n) if top_n else df
     ind = indicators(sub)
@@ -287,7 +287,7 @@ def full_report(
     return report_txt
 
 
-# ── Uruchomienie bezpośrednie (test CLI) ───────────────────
+# ── Direct execution (CLI test) ───────────────────
 if __name__ == "__main__":
     import sys
 
