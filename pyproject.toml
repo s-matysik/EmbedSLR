@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "embedslr"
-version = "0.2.0"
+version = "v1.0.0"
 description = "Embedding‑based screening and bibliometrics for SLRs"
 authors = [{name="EmbedSLR Dev Team", email="embedslr@proton.me"}]
 license = {text="MIT"}
