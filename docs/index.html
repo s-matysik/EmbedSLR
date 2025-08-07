@@ -48,7 +48,7 @@ run()   # launches an interactive widget</code></pre>
 
 <h3>2.2&nbsp;Terminal Wizard&nbsp;⚡ (offline‑friendly)</h3>
 <ol>
-  <li>Export your Scopus / Web of Science search results to <code>CSV</code>.</li>
+  <li>Export your Scopus search results to <code>CSV</code>.</li>
   <li>Run:
   <pre><code>python -m embedslr.wizard</code></pre></li>
   <li>Provide the CSV path, research query and choose provider/model.</li>
@@ -105,7 +105,7 @@ print("Mean Jaccard (keywords):", indicator_b_prime(ranked_df))</code></pre>
 
 <pre>
 embedslr/                 # main package
-├── io.py                 # load CSV/RIS, column detection, title+abstract merge
+├── io.py                 # load CSV, column detection, title+abstract merge
 ├── embeddings.py         # five providers + get_embeddings()
 ├── similarity.py         # cosine ranking
 ├── bibliometrics.py      # indicators A … I + full report
