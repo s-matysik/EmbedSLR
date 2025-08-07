@@ -1,7 +1,6 @@
 """
-embedslr.embeddings  (ver. 0.7.1)
-Unified façade for five providers of text embeddings.
-Now with dynamic model discovery and open‑ended model names.
+embedslr.embeddings 
+
 """
 from __future__ import annotations
 import functools, os, time
@@ -19,7 +18,7 @@ _PROVIDERS = {"sbert", "openai", "cohere", "nomic", "jina"}
 
 _STATIC_MODELS: Dict[str, List[str]] = {
     "sbert": [
-        # fast / średniej wielkości
+        # fast / medium-sized
         "sentence-transformers/all-MiniLM-L6-v2",
         "sentence-transformers/all-MiniLM-L12-v2",
         "sentence-transformers/all-mpnet-base-v2",
@@ -31,7 +30,7 @@ _STATIC_MODELS: Dict[str, List[str]] = {
         "sentence-transformers/distiluse-base-multilingual-cased-v2",
         "sentence-transformers/average_word_embeddings_glove.6B.300d",
     ],
-    "openai": [  # fallback gdy brak klucza
+    "openai": [  # fallback when no key is provided
         "text-embedding-3-small",
         "text-embedding-3-large",
         "text-embedding-ada-002",
@@ -47,7 +46,7 @@ _STATIC_MODELS: Dict[str, List[str]] = {
 }
 
 
-# ─────────────── dynamic OpenAI discovery (cache 6 h) ──────────────────────
+# ─────────────── dynamic OpenAI discovery (cache 6 h) ──────────────────────
 @functools.lru_cache(maxsize=1)
 def _openai_model_list() -> List[str]:
     api_key = os.getenv("OPENAI_API_KEY")
@@ -58,18 +57,18 @@ def _openai_model_list() -> List[str]:
     try:
         models = client.models.list().data
     except APIConnectionError:
-        # brak internetu lub timeout – wracamy do statycznej listy
+        # no internet or timeout – fallback to static list
         return _STATIC_MODELS["openai"]
 
     names = [m.id for m in models if m.id.startswith("text-embedding")]
-    # sortuj według „family/m-size” → miłe dla oka
+    # sort by “family/m-size” → nicer for the eye
     names.sort()
-    # dodaj fallback, jeżeli w międzyczasie OpenAI usunęło starą adę
+    # add fallback in case OpenAI removed the old ada in the meantime
     return names or _STATIC_MODELS["openai"]
 
 
 def list_models() -> Dict[str, List[str]]:
-    """Zwraca słownik dostępnych modeli (dla OpenAI dynamicznie odświeżany)."""
+    """Returns a dictionary of available models (for OpenAI refreshed dynamically)."""
     out = _STATIC_MODELS.copy()
     out["openai"] = _openai_model_list()
     return out
@@ -84,13 +83,13 @@ def get_embeddings(
     **kw,
 ) -> List[List[float]]:
     """
-    Pobiera embeddingi dla listy *texts*.
+    Retrieves embeddings for the list *texts*.
 
-    *provider*  – jeden z {`sbert`,`openai`,`cohere`,`nomic`,`jina`}
-    *model*     – nazwa modelu (może być dowolna); jeżeli `None`, używany jest
-                  pierwszy model z listy zwracanej przez `list_models()`.
-    *strict*    – gdy True i *model* nie znajduje się na liście → ValueError.
-    **kw        – parametry specyficzne dla danego providera (patrz niżej).
+    *provider*  – one of {`sbert`,`openai`,`cohere`,`nomic`,`jina`}
+    *model*     – model name (can be arbitrary); if `None`, the first model
+                  from the list returned by `list_models()` is used.
+    *strict*    – when True and *model* is not on the list → ValueError.
+    **kw        – parameters specific to the given provider (see below).
     """
     provider = provider.lower()
     if provider not in _PROVIDERS:
@@ -113,7 +112,7 @@ def get_embeddings(
     return fn(texts, model=model, **kw)
 
 
-# ───────────────────── provider‑specific implementacje ─────────────────────
+# ───────────────────── provider-specific implementations ─────────────────────
 def _embed_sbert(texts, *, model, **_):
     st = SentenceTransformer(model)
     with progress("SBERT", total=len(texts)):
