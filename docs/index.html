@@ -11,6 +11,7 @@ code,pre{font-family:Consolas,Monaco,monospace}
 pre{background:#fafafa;border:1px solid #ddd;padding:1rem;border-radius:5px;overflow-x:auto}
 kbd{background:#eee;border:1px solid #ccc;border-radius:3px;padding:2px 4px;font-size:90%}
 table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:.4rem}th{background:#f5f5f5}
+small.note{color:#666}
 </style>
 </head>
 <body>
@@ -38,11 +39,20 @@ cd EmbedSLR
 pip install -e .       # editable install
 </code></pre>
 
+<h3>1.2 Requirements &amp; environment</h3>
+<ul>
+  <li><code>Python &gt;= 3.9</code></li>
+  <li>Core deps: <code>pandas</code>, <code>numpy</code>, <code>scikit-learn</code>, <code>sentence-transformers</code>, <code>openai</code>, <code>cohere</code>, <code>requests</code>, <code>tqdm</code>, <code>ipywidgets</code></li>
+  <li>Optional (Colab): <code>google-colab</code></li>
+  <li>Cloud providers (optional): set API keys via env vars:
+    <code>OPENAI_API_KEY</code>, <code>COHERE_API_KEY</code>, <code>JINA_API_KEY</code>, <code>NOMIC_API_KEY</code></li>
+</ul>
+
 
 <h2>2&nbsp;&nbsp;Quick start</h2>
 
 <h3>2.1&nbsp;Google Colab GUI&nbsp;🟢 (recommended for first‑time users)</h3>
-<pre><code class="language-python">!pip install git+https://github.com/s-matysik/EmbedSLR.git
+<pre><code class="language-python">!pip install -q git+https://github.com/s-matysik/EmbedSLR.git
 from embedslr.colab_app import run
 run()   # launches an interactive widget</code></pre>
 
@@ -54,6 +64,35 @@ run()   # launches an interactive widget</code></pre>
   <li>Provide the CSV path, research query and choose provider/model.</li>
   <li>Receive a ZIP archive (<code>ranking.csv</code>, optional <code>topN.csv</code>, <code>biblio_report.txt</code>).</li>
 </ol>
+
+<h3>2.3 CLI (one‑shot)</h3>
+<p>The command‑line interface is a single command (argparse‑based):</p>
+<pre><code>embedslr \
+  -i scopus.csv \
+  -q "How do CSR cues influence consumer behaviour?" \
+  -p sbert \
+  -o ranking.csv \
+  -r biblio_report.txt \
+  --json-embs
+</code></pre>
+<p class="note"><small class="note">Flags: <code>-i/--input</code>, <code>-q/--query</code>, <code>-p/--provider</code> (<code>sbert</code>|<code>openai</code>|<code>cohere</code>|<code>jina</code>|<code>nomic</code>), <code>-m/--model</code> (optional), <code>-o/--out</code>, <code>-r/--report</code>, <code>--api_key</code> (optional), <code>--json-embs</code> (save embeddings column).</small></p>
+
+<h3>2.4 Python API (minimal)</h3>
+<pre><code class="language-python">from embedslr.io import read_csv, autodetect_columns, combine_title_abstract
+from embedslr.embeddings import get_embeddings, list_models
+from embedslr.similarity import rank_by_cosine
+from embedslr.bibliometrics import full_report
+
+df = read_csv("scopus.csv")
+tcol, acol = autodetect_columns(df)
+df["combined_text"] = combine_title_abstract(df, tcol, acol)
+
+model = list_models()["sbert"][0]  # e.g. "sentence-transformers/all-MiniLM-L6-v2"
+doc_vecs = get_embeddings(df["combined_text"].tolist(), provider="sbert", model=model)
+qvec = get_embeddings(["your research question"], provider="sbert", model=model)[0]
+
+ranked = rank_by_cosine(qvec, doc_vecs, df)
+full_report(ranked, path="biblio_report.txt", top_n=30)  # if top_n omitted → full dataset</code></pre>
 
 
 <h2>3&nbsp;&nbsp;Local SBERT (automatic download &amp; 100 % offline afterwards)</h2>
@@ -69,6 +108,15 @@ run()   # launches an interactive widget</code></pre>
 </table>
 
 <p><em>Result:</em> from the second launch onward, EmbedSLR runs entirely offline even in closed networks.</p>
+
+<h3>3.1 Embedding providers &amp; models (built‑ins)</h3>
+<pre><code class="language-text">sbert  : sentence-transformers (e.g. all-MiniLM-L6-v2)
+openai : text-embedding-3-large, text-embedding-ada-002
+cohere : embed-english-v3.0, embed-english-light-v3.0,
+         embed-multilingual-v3.0, embed-multilingual-light-v3.0
+nomic  : nomic-embed-text-v1, nomic-embed-text-v1.5
+jina   : jina-embeddings-v3
+</code></pre>
 
 
 <h2>4&nbsp;&nbsp;Bibliometric indicators (A … I)</h2>
@@ -100,25 +148,39 @@ full_report(ranked_df, path="biblio_report.txt", top_n=30)</code></pre>
 <pre><code class="language-python">from embedslr.bibliometrics import indicator_b_prime
 print("Mean Jaccard (keywords):", indicator_b_prime(ranked_df))</code></pre>
 
+<h3>4.3 Input columns &amp; assumptions</h3>
+<ul>
+  <li><code>Title</code> and <code>Abstract</code> (auto‑detected; several common Scopus header variants supported).</li>
+  <li><code>Author Keywords</code> (optional; created empty if missing).</li>
+  <li><code>Parsed_References</code> &mdash; set/list of references. If missing but <code>References</code> exists, the wizard derives it automatically. If neither is present, reference‑based indicators will be near zero.</li>
+</ul>
+
+<h3>4.4 Outputs &amp; columns</h3>
+<ul>
+  <li><code>ranking.csv</code> &mdash; sorted by <code>distance_cosine</code> (<em>smaller&nbsp;=&nbsp;closer to query</em>); includes <code>combined_text</code> and, if requested, <code>combined_embeddings</code> (JSON).</li>
+  <li><code>biblio_report.txt</code> &mdash; human‑readable summary of indicators A…I (optionally limited to Top‑N).</li>
+  <li><code>topN.csv</code> &mdash; optional top‑N slice of the ranking.</li>
+</ul>
+
 
 <h2>5&nbsp;&nbsp;Repository structure</h2>
 
 <pre>
 embedslr/                 # main package
-├── io.py                 # load CSV, column detection, title+abstract merge
-├── embeddings.py         # five providers + get_embeddings()
-├── similarity.py         # cosine ranking
-├── bibliometrics.py      # indicators A … I + full report
-├── wizard.py             # interactive terminal assistant (offline pipeline)
-├── cli.py                # Typer CLI: rank, metrics, wizard
+├── io.py                 # read_csv(), column detection, title+abstract merge
+├── embeddings.py         # providers + list_models(), get_embeddings()
+├── similarity.py         # cosine ranking (rank_by_cosine)
+├── bibliometrics.py      # indicators A … I + full_report()
+├── wizard.py             # interactive terminal assistant (offline pipeline), run()
+├── cli.py                # argparse CLI: single 'embedslr' command with flags
 ├── colab_app.py          # Google Colab widget
-├── utils.py              # logging, timing, seeds
-├── _version.py           # version number
+├── utils.py              # chunk_iterable(), getenv_or_raise(), progress()
+├── _version.py           # aux version holder
 └── __init__.py           # public API exports
-docs/                     # (Sphinx/pdoc) documentation – replace with this file
-examples/                 # Jupyter notebooks and article assets
-pyproject.toml            # manifest: metadata, runtime deps, build backend
-setup.cfg                 # flake8 tweaks + py.typed
+docs/                     # static docs (this page)
+examples/                 # sample data and results
+pyproject.toml            # metadata, runtime deps, build backend, entry points
+setup.cfg                 # flake8 + packaging extras
 MANIFEST.in               # non‑Python files included in sdist
 LICENSE                   # MIT licence
 README.md                 # repo front page – quick overview
@@ -129,14 +191,14 @@ README.md                 # repo front page – quick overview
 <h2>6&nbsp;&nbsp;File highlights</h2>
 
 <ul>
-  <li><strong>io.py</strong> – <code>load_csv()</code>, <code>load_ris()</code>, column auto‑detection, <code>combine_title_abstract()</code></li>
-  <li><strong>embeddings.py</strong> – provider classes (SbertProvider, OpenAIProvider, …), <code>list_models()</code>, <code>get_embeddings()</code></li>
-  <li><strong>similarity.py</strong> – <code>rank_by_cosine()</code> returns a sorted DataFrame</li>
-  <li><strong>bibliometrics.py</strong> – indicator functions, <code>indicators()</code>, <code>full_report()</code></li>
-  <li><strong>wizard.py</strong> – end‑to‑end pipeline with SBERT offline logic</li>
-  <li><strong>cli.py</strong> – Typer commands <kbd>embedslr rank</kbd>, <kbd>embedslr metrics</kbd>, <kbd>embedslr wizard</kbd></li>
+  <li><strong>io.py</strong> – <code>read_csv()</code>, column auto‑detection (<code>autodetect_columns()</code>), <code>combine_title_abstract()</code></li>
+  <li><strong>embeddings.py</strong> – functional API for providers (<code>list_models()</code>, <code>get_embeddings()</code>)</li>
+  <li><strong>similarity.py</strong> – <code>rank_by_cosine()</code> (ascending by <code>distance_cosine</code>)</li>
+  <li><strong>bibliometrics.py</strong> – indicator functions, <code>indicators()</code>, <code>full_report()</code> (<code>top_n</code> is optional; default = full dataset)</li>
+  <li><strong>wizard.py</strong> – end‑to‑end pipeline with SBERT offline logic (<code>HF_HUB_OFFLINE=1</code> after first download)</li>
+  <li><strong>cli.py</strong> – argparse‑based CLI (no Typer sub‑commands)</li>
   <li><strong>colab_app.py</strong> – <code>run()</code> builds the ipywidgets GUI</li>
-  <li><strong>utils.py</strong> – unified logging (<code>log()</code>), <code>timed()</code>, <code>set_seed()</code></li>
+  <li><strong>utils.py</strong> – <code>chunk_iterable</code>, <code>getenv_or_raise</code>, <code>progress</code></li>
 </ul>
 
 
@@ -146,7 +208,7 @@ README.md                 # repo front page – quick overview
   title  = {EmbedSLR – deterministic embedding‑based screening and bibliometric validation in SLR},
   author = {Matysik, Sebastian and Wiśniewska, Joanna and Frankowski, Paweł K.},
   year   = {2025},
-  url    = {https://github.com/s-matysik/EmbedSLR/}
+  url    = {https://github.com/s-matysik/EmbedSLR}
 }</code></pre>
 
 
@@ -154,16 +216,21 @@ README.md                 # repo front page – quick overview
 
 <details>
   <summary><strong>❓ I have no API key. Can I still use EmbedSLR?</strong></summary>
-  <p>Yes. Choose the <kbd>sbert</kbd> provider. The model is downloaded once from HF Hub and then works fully offline.</p>
+  <p>Yes. Choose the <kbd>sbert</kbd> provider. The model is downloaded once from HF Hub and then works fully offline.</p>
 </details>
 
 <details>
-  <summary><strong>❓ How do I change the default Top‑N for the metrics?</strong></summary>
-  <p>In the wizard, enter the desired number when prompted <kbd>🔢 Top‑N publications for metrics</kbd>. In the API, pass <code>top_n</code> to <code>full_report()</code>.</p>
+  <summary><strong>❓ How do I set Top‑N for the metrics?</strong></summary>
+  <p>In the wizard, enter the desired number when prompted (<kbd>🔢 Top‑N publications for metrics</kbd>). In the API, pass <code>top_n</code> to <code>full_report()</code>. If you omit <code>top_n</code>, the report is computed on the full dataset.</p>
+</details>
+
+<details>
+  <summary><strong>❓ Which environment variables are used for cloud providers?</strong></summary>
+  <p><code>OPENAI_API_KEY</code>, <code>COHERE_API_KEY</code>, <code>JINA_API_KEY</code>, <code>NOMIC_API_KEY</code>. You may also pass <code>--api_key</code> in the CLI.</p>
 </details>
 
 
-<p style="margin-top:3rem;font-size:90%;color:#555">This page was generated automatically – last update: <time datetime="2025-08-06">06&nbsp;Aug&nbsp;2025</time>.</p>
+<p style="margin-top:3rem;font-size:90%;color:#555">This page was generated automatically – last update: <time datetime="2025-08-08">08&nbsp;Aug&nbsp;2025</time>.</p>
 
 </body>
 </html>
