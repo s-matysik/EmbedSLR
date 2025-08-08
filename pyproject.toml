@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "embedslr"
 version = "1.0.0"
 description = "Embedding‑based screening and bibliometrics for SLRs"
-authors = [{name="EmbedSLR Dev Team", email="embedslr@proton.me"}]
+authors = [{name="EmbedSLR Dev Team", email="sebsatian.matysik@usz.edu.pl"}]
 license = {text="MIT"}
 readme = "README.md"
 requires-python = ">=3.9"
@@ -23,9 +23,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-colab = ["google-colab"]
-dev   = ["pytest", "ruff", "black"]
+colab = ["ipywidgets>=8.1"]
 
 [project.scripts]
 embedslr = "embedslr.cli:main"
 embedslr-wizard = "embedslr.wizard:main"
+
+[project.urls]
+Homepage = "https://github.com/s-matysik/EmbedSLR"
+Repository = "https://github.com/s-matysik/EmbedSLR"
+Documentation = "https://s-matysik.github.io/EmbedSLR/"
+"Bug Tracker" = "https://github.com/s-matysik/EmbedSLR/issues"
