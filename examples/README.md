@@ -5,7 +5,7 @@ generated on 26 January 2025, containing 597 records matching the query:
 
 (“CSR influence” OR “Corporate Social Responsibility influence”) AND “consumer behavior”
 
-The dataset was processed using EmbedSLR v1.0.0 in Google Colab, with the SBERT backend and the model all-distilroberta-v1.
+The dataset was processed using EmbedSLR 1.0.0 in Google Colab, with the SBERT backend and the model all-distilroberta-v1.
 The bibliometric audit was limited to the Top 30 resultsfor the research question at hand: 
 
 Does corporate social responsibility (CSR) influence consumer behavior?
