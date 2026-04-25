@@ -28,8 +28,10 @@ If you use **EmbedSLR** in scientific work, please cite us:
 
 ```bibtex
 {
-  title   = {EmbedSLR – an open Python framework for deterministic embedding‑based screening and bibliometric validation in systematic literature reviews},
+   title   = {EmbedSLR: an open-source python framework for efficient embedding-based screening and bibliometric validation in systematic literature review},
   author  = {Matysik, S., Wiśniewska, J., Frankowski, P.K.},
   year    = {2025},
-  url     = {https://github.com/s-matysik/EmbedSLR/}
+  journal = {SoftwareX},
+  volume = {32},
+  url     = {https://doi.org/10.1016/j.softx.2025.102416}
 }
